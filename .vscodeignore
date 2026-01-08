@@ -1,0 +1,8 @@
+.gitignore
+tsconfig.json
+**/*.ts
+**/*.map
+**/*.test.ts
+package-lock.json
+gitea-actions-vscode-extension-plan.md
+src/**
