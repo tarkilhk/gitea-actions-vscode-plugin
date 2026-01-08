@@ -2,7 +2,8 @@
   "name": "gitea-actions-vscode-plugin",
   "displayName": "Gitea Actions",
   "description": "View and inspect Gitea Actions workflow runs directly from VS Code / Cursor.",
-  "version": "0.1.1",
+  "icon": "resources/gitea-actions-icon.png",
+  "version": "1.0.0",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -18,6 +19,7 @@
   "activationEvents": [
     "onStartupFinished",
     "onView:giteaActions.runs",
+    "onView:giteaActions.runsPinned",
     "onCommand:giteaActions.refresh",
     "onCommand:giteaActions.setToken",
     "onCommand:giteaActions.clearToken",
@@ -76,6 +78,12 @@
           "default": 20,
           "minimum": 1,
           "description": "Maximum number of recent runs to fetch per repository."
+        },
+        "giteaActions.maxJobsPerRun": {
+          "type": "number",
+          "default": 50,
+          "minimum": 1,
+          "description": "Maximum number of jobs to request per workflow run."
         }
       }
     },
@@ -84,7 +92,7 @@
         {
           "id": "giteaActions",
           "title": "Gitea Actions",
-          "icon": "resources/gitea-actions-icon.png"
+          "icon": "resources/gitea-actions-activitybar.png"
         }
       ]
     },
@@ -94,6 +102,11 @@
           "type": "tree",
           "id": "giteaActions.runs",
           "name": "Runs (Workspace)"
+        },
+        {
+          "type": "tree",
+          "id": "giteaActions.runsPinned",
+          "name": "Runs (Pinned)"
         }
       ]
     },
@@ -117,11 +130,11 @@
       },
       {
         "command": "giteaActions.viewJobLogs",
-        "title": "Gitea Actions: View Job Logs"
+        "title": "View Logs"
       },
       {
         "command": "giteaActions.openInBrowser",
-        "title": "Gitea Actions: Open in Browser"
+        "title": "Open in Browser"
       },
       {
         "command": "giteaActions.pinRepo",
@@ -136,34 +149,34 @@
       "view/title": [
         {
           "command": "giteaActions.refresh",
-          "when": "view == giteaActions.runs",
+          "when": "view == giteaActions.runs || view == giteaActions.runsPinned",
           "group": "navigation"
         }
       ],
       "view/item/context": [
         {
           "command": "giteaActions.viewJobLogs",
-          "when": "view == giteaActions.runs && viewItem == giteaJob",
+          "when": "(view == giteaActions.runs || view == giteaActions.runsPinned) && viewItem == giteaJob",
           "group": "inline"
         },
         {
           "command": "giteaActions.refresh",
-          "when": "view == giteaActions.runs && (viewItem == giteaRepo || viewItem == giteaRepoPinned)",
+          "when": "(view == giteaActions.runs || view == giteaActions.runsPinned) && (viewItem == giteaRepo || viewItem == giteaRepoPinned)",
           "group": "inline"
         },
         {
           "command": "giteaActions.openInBrowser",
-          "when": "view == giteaActions.runs && (viewItem == giteaRun || viewItem == giteaJob)",
+          "when": "(view == giteaActions.runs || view == giteaActions.runsPinned) && (viewItem == giteaRun || viewItem == giteaJob)",
           "group": "inline@2"
         },
         {
           "command": "giteaActions.pinRepo",
-          "when": "view == giteaActions.runs && viewItem == giteaRepo",
+          "when": "(view == giteaActions.runs || view == giteaActions.runsPinned) && viewItem == giteaRepo",
           "group": "inline"
         },
         {
           "command": "giteaActions.unpinRepo",
-          "when": "view == giteaActions.runs && viewItem == giteaRepoPinned",
+          "when": "(view == giteaActions.runs || view == giteaActions.runsPinned) && viewItem == giteaRepoPinned",
           "group": "inline"
         }
       ]
@@ -179,4 +192,3 @@
     "undici": "^7.18.2"
   }
 }
-

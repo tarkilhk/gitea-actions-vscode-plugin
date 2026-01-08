@@ -8,12 +8,17 @@ export type RepoRef = {
 export type WorkflowRun = {
   id: number | string;
   name: string;
+  runNumber?: number;
+  runAttempt?: number;
+  event?: string;
   branch?: string;
   sha?: string;
   status: 'queued' | 'running' | 'completed' | 'unknown';
   conclusion?: 'success' | 'failure' | 'cancelled' | 'skipped' | 'unknown';
   createdAt?: string;
   updatedAt?: string;
+  startedAt?: string;
+  completedAt?: string;
   htmlUrl?: string;
 };
 

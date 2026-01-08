@@ -8,8 +8,15 @@ type RepoState = {
   repo: RepoRef;
   pinned: boolean;
   runs: WorkflowRun[];
-  jobs: Map<string | number, Job[]>;
+  jobs: Map<string | number, JobCache>;
+  inFlightJobs: Map<string | number, Promise<void>>;
   state: 'idle' | 'loading' | 'error';
+  error?: string;
+};
+
+type JobCache = {
+  state: 'unloaded' | 'loading' | 'idle' | 'error';
+  jobs: Job[];
   error?: string;
 };
 
@@ -80,8 +87,38 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       if (!repoState) {
         return [];
       }
-      const jobs = repoState.jobs.get(element.run.id) ?? [];
-      if (!jobs.length) {
+      const cache = repoState.jobs.get(element.run.id);
+      if (!cache || cache.state === 'unloaded') {
+        return [
+          {
+            type: 'message',
+            repo: element.repo,
+            message: 'Expand to load jobs',
+            severity: 'info'
+          } satisfies MessageNode
+        ];
+      }
+      if (cache.state === 'loading') {
+        return [
+          {
+            type: 'message',
+            repo: element.repo,
+            message: 'Loading jobs...',
+            severity: 'info'
+          } satisfies MessageNode
+        ];
+      }
+      if (cache.state === 'error') {
+        return [
+          {
+            type: 'message',
+            repo: element.repo,
+            message: cache.error ?? 'Failed to load jobs',
+            severity: 'error'
+          } satisfies MessageNode
+        ];
+      }
+      if (!cache.jobs.length) {
         return [
           {
             type: 'message',
@@ -91,7 +128,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
           } satisfies MessageNode
         ];
       }
-      return jobs.map<JobNode>((job) => ({
+      return cache.jobs.map<JobNode>((job) => ({
         type: 'job',
         repo: element.repo,
         runId: element.run.id,
@@ -112,6 +149,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
         pinned: pinnedIds.has(key),
         runs: existing?.runs ?? [],
         jobs: existing?.jobs ?? new Map(),
+        inFlightJobs: existing?.inFlightJobs ?? new Map(),
         state: existing?.state ?? 'idle',
         error: existing?.error
       });
@@ -126,6 +164,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     if (state) {
       state.state = 'loading';
       state.error = undefined;
+      state.inFlightJobs.clear();
       this.refresh(repo);
     }
   }
@@ -145,6 +184,12 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       state.runs = runs;
       state.state = 'idle';
       state.error = undefined;
+      const nextJobs = new Map<string | number, JobCache>();
+      for (const run of runs) {
+        nextJobs.set(run.id, state.jobs.get(run.id) ?? { state: 'unloaded', jobs: [] });
+      }
+      state.jobs = nextJobs;
+      state.inFlightJobs = new Map();
       this.refresh(repo);
     }
   }
@@ -152,8 +197,46 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
   updateJobs(repo: RepoRef, runId: number | string, jobs: Job[]): void {
     const state = this.repos.get(repoKey(repo));
     if (state) {
-      state.jobs.set(runId, jobs);
-      this.refresh(repo);
+      state.jobs.set(runId, { state: 'idle', jobs });
+      state.inFlightJobs.delete(runId);
+      this.refresh();
+    }
+  }
+
+  setRunJobsLoading(repo: RepoRef, runId: number | string): void {
+    const state = this.repos.get(repoKey(repo));
+    if (state) {
+      const existing = state.jobs.get(runId);
+      state.jobs.set(runId, { state: 'loading', jobs: existing?.jobs ?? [] });
+      state.inFlightJobs.delete(runId);
+      const run = state.runs.find((r) => r.id === runId);
+      this.refresh(
+        run
+          ? {
+              type: 'run',
+              repo,
+              run
+            }
+          : repo
+      );
+    }
+  }
+
+  setRunJobsError(repo: RepoRef, runId: number | string, error: string): void {
+    const state = this.repos.get(repoKey(repo));
+    if (state) {
+      state.jobs.set(runId, { state: 'error', jobs: [], error });
+      state.inFlightJobs.delete(runId);
+      const run = state.runs.find((r) => r.id === runId);
+      this.refresh(
+        run
+          ? {
+              type: 'run',
+              repo,
+              run
+            }
+          : repo
+      );
     }
   }
 

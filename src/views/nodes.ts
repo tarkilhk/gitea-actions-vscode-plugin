@@ -38,6 +38,17 @@ function shortSha(sha?: string): string {
   return sha ? sha.substring(0, 7) : '';
 }
 
+function eventIcon(event?: string): string {
+  const lower = (event ?? '').toLowerCase();
+  if (lower === 'pull_request' || lower === 'pull-request' || lower === 'pr') {
+    return '$(git-pull-request) ';
+  }
+  if (lower === 'push') {
+    return '$(git-commit) ';
+  }
+  return '';
+}
+
 export function toTreeItem(node: ActionsNode): vscode.TreeItem {
   switch (node.type) {
     case 'repo': {
@@ -54,23 +65,38 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
     }
     case 'run': {
       const { run } = node;
-      const labelParts = [run.name];
+      const labelPrefix = eventIcon(run.event);
+      const label = `${labelPrefix}${run.name}`;
+      const metaParts: string[] = [];
+      if (run.runNumber) {
+        const attempt = run.runAttempt && run.runAttempt > 1 ? ` (attempt ${run.runAttempt})` : '';
+        metaParts.push(`#${run.runNumber}${attempt}`);
+      }
       if (run.branch) {
-        labelParts.push(run.branch);
+        metaParts.push(run.branch);
       }
       if (run.sha) {
-        labelParts.push(shortSha(run.sha));
+        metaParts.push(shortSha(run.sha));
       }
-      const item = new vscode.TreeItem(labelParts.join(' · '), vscode.TreeItemCollapsibleState.Collapsed);
+      const duration = formatDuration(run.startedAt ?? run.createdAt, run.completedAt ?? run.updatedAt);
+      if (duration) {
+        metaParts.push(duration);
+      }
+      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
+      item.id = `run-${run.id}`;
       item.iconPath = iconForRun(run);
-      const updated = formatAgo(run.updatedAt ?? run.createdAt);
-      item.description = updated;
+      const updated = formatAgo(run.updatedAt ?? run.completedAt ?? run.createdAt);
+      item.description = metaParts.length ? metaParts.join(' · ') : updated;
       item.tooltip = [
         run.name,
+        run.event ? `Event: ${run.event}` : '',
+        run.runNumber ? `Run #: ${run.runNumber}` : '',
+        run.runAttempt ? `Attempt: ${run.runAttempt}` : '',
         run.branch ? `Branch: ${run.branch}` : '',
         run.sha ? `Commit: ${run.sha}` : '',
-        run.createdAt ? `Created: ${formatDateTime(run.createdAt)}` : '',
-        run.updatedAt ? `Updated: ${formatDateTime(run.updatedAt)}` : ''
+        run.startedAt ? `Started: ${formatDateTime(run.startedAt)}` : run.createdAt ? `Created: ${formatDateTime(run.createdAt)}` : '',
+        run.completedAt ? `Completed: ${formatDateTime(run.completedAt)}` : run.updatedAt ? `Updated: ${formatDateTime(run.updatedAt)}` : '',
+        duration ? `Duration: ${duration}` : ''
       ]
         .filter(Boolean)
         .join('\n');
@@ -85,6 +111,7 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
       const label = job.name;
       const duration = formatDuration(job.startedAt, job.completedAt);
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+      item.id = `job-${node.runId}-${job.id}`;
       item.iconPath = iconForJob(job);
       item.description = duration || undefined;
       item.tooltip = [
