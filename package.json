@@ -1,0 +1,182 @@
+{
+  "name": "gitea-actions-vscode-plugin",
+  "displayName": "Gitea Actions",
+  "description": "View and inspect Gitea Actions workflow runs directly from VS Code / Cursor.",
+  "version": "0.1.1",
+  "publisher": "local",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://example.com/placeholder.git"
+  },
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:giteaActions.runs",
+    "onCommand:giteaActions.refresh",
+    "onCommand:giteaActions.setToken",
+    "onCommand:giteaActions.clearToken",
+    "onCommand:giteaActions.testConnection",
+    "onCommand:giteaActions.viewJobLogs",
+    "onCommand:giteaActions.openInBrowser",
+    "onCommand:giteaActions.pinRepo",
+    "onCommand:giteaActions.unpinRepo"
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "lint": "eslint . --ext .ts",
+    "package": "npm run compile && npx @vscode/vsce package"
+  },
+  "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "Gitea Actions",
+      "properties": {
+        "giteaActions.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Base URL of your Gitea instance (e.g. http://localhost:3000)."
+        },
+        "giteaActions.tls.insecureSkipVerify": {
+          "type": "boolean",
+          "default": false,
+          "description": "Skip TLS certificate verification (not recommended)."
+        },
+        "giteaActions.discovery.mode": {
+          "type": "string",
+          "enum": [
+            "workspace",
+            "pinned",
+            "allAccessible"
+          ],
+          "default": "workspace",
+          "description": "How repositories are discovered: from workspace remotes, pinned list, or (optionally) all accessible repos via API."
+        },
+        "giteaActions.refresh.runningIntervalSeconds": {
+          "type": "number",
+          "default": 15,
+          "minimum": 5,
+          "description": "Polling interval (seconds) while runs are queued or running."
+        },
+        "giteaActions.refresh.idleIntervalSeconds": {
+          "type": "number",
+          "default": 60,
+          "minimum": 10,
+          "description": "Polling interval (seconds) while idle."
+        },
+        "giteaActions.maxRunsPerRepo": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "description": "Maximum number of recent runs to fetch per repository."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "giteaActions",
+          "title": "Gitea Actions",
+          "icon": "resources/gitea-actions-icon.png"
+        }
+      ]
+    },
+    "views": {
+      "giteaActions": [
+        {
+          "type": "tree",
+          "id": "giteaActions.runs",
+          "name": "Runs (Workspace)"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "giteaActions.refresh",
+        "title": "Gitea Actions: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "giteaActions.setToken",
+        "title": "Gitea Actions: Set Token"
+      },
+      {
+        "command": "giteaActions.clearToken",
+        "title": "Gitea Actions: Clear Token"
+      },
+      {
+        "command": "giteaActions.testConnection",
+        "title": "Gitea Actions: Test Connection"
+      },
+      {
+        "command": "giteaActions.viewJobLogs",
+        "title": "Gitea Actions: View Job Logs"
+      },
+      {
+        "command": "giteaActions.openInBrowser",
+        "title": "Gitea Actions: Open in Browser"
+      },
+      {
+        "command": "giteaActions.pinRepo",
+        "title": "Gitea Actions: Pin Repository"
+      },
+      {
+        "command": "giteaActions.unpinRepo",
+        "title": "Gitea Actions: Unpin Repository"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "giteaActions.refresh",
+          "when": "view == giteaActions.runs",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "giteaActions.viewJobLogs",
+          "when": "view == giteaActions.runs && viewItem == giteaJob",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.refresh",
+          "when": "view == giteaActions.runs && (viewItem == giteaRepo || viewItem == giteaRepoPinned)",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.openInBrowser",
+          "when": "view == giteaActions.runs && (viewItem == giteaRun || viewItem == giteaJob)",
+          "group": "inline@2"
+        },
+        {
+          "command": "giteaActions.pinRepo",
+          "when": "view == giteaActions.runs && viewItem == giteaRepo",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.unpinRepo",
+          "when": "view == giteaActions.runs && viewItem == giteaRepoPinned",
+          "group": "inline"
+        }
+      ]
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/vscode": "^1.105.0",
+    "typescript": "^5.9.3",
+    "@vscode/vsce": "^3.7.1"
+  },
+  "dependencies": {
+    "undici": "^7.18.2"
+  }
+}
+
