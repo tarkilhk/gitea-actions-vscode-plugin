@@ -21,12 +21,17 @@ function mapRun(repo: RepoRef, raw: any): WorkflowRun {
   return {
     id: raw.id ?? raw.run_id ?? raw.workflow_id ?? String(Math.random()),
     name: raw.display_title ?? raw.title ?? raw.name ?? raw.workflow_name ?? `${repo.owner}/${repo.name}`,
+    runNumber: raw.run_number ?? raw.runNumber,
+    runAttempt: raw.run_attempt ?? raw.runAttempt,
+    event: raw.event,
     branch: raw.head_branch ?? raw.branch ?? raw.ref,
     sha: raw.head_sha ?? raw.sha ?? raw.commit,
     status,
     conclusion,
-    createdAt: raw.created_at ?? raw.started_at ?? raw.created ?? raw.createdAt,
-    updatedAt: raw.updated_at ?? raw.completed_at ?? raw.updated ?? raw.updatedAt,
+    createdAt: raw.created_at ?? raw.created ?? raw.createdAt,
+    updatedAt: raw.updated_at ?? raw.updated ?? raw.updatedAt,
+    startedAt: raw.started_at ?? raw.startedAt,
+    completedAt: raw.completed_at ?? raw.completedAt,
     htmlUrl: raw.html_url ?? raw.url ?? raw.web_url
   };
 }
@@ -74,9 +79,14 @@ export class GiteaApi {
     return runs.map((run) => mapRun(repo, run));
   }
 
-  async listJobs(repo: RepoRef, runId: number | string): Promise<Job[]> {
-    const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/runs/${runId}/jobs`;
-    const payload = await this.client.getJson<any>(path);
+  async listJobs(
+    repo: RepoRef,
+    runId: number | string,
+    options?: { limit?: number; timeoutMs?: number }
+  ): Promise<Job[]> {
+    const qp = options?.limit && Number.isFinite(options.limit) ? `?limit=${encodeURIComponent(options.limit)}` : '';
+    const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/runs/${runId}/jobs${qp}`;
+    const payload = await this.client.getJson<any>(path, undefined, options?.timeoutMs);
     const jobs = pickArray<any>(payload, payload.jobs ?? []);
     return jobs.map((job) => mapJob(job));
   }

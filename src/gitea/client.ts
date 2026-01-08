@@ -25,8 +25,8 @@ export class GiteaClient {
     });
   }
 
-  async getJson<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await this.request(path, init);
+  async getJson<T>(path: string, init?: RequestInit, timeoutMs?: number): Promise<T> {
+    const res = await this.request(path, init, timeoutMs);
     const text = await res.text();
     const contentType = res.headers.get('content-type') ?? '';
     if (!res.ok) {
@@ -38,8 +38,8 @@ export class GiteaClient {
     throw new Error(`Unexpected response type: ${contentType || 'unknown'}`);
   }
 
-  async getText(path: string, init?: RequestInit): Promise<string> {
-    const res = await this.request(path, init);
+  async getText(path: string, init?: RequestInit, timeoutMs?: number): Promise<string> {
+    const res = await this.request(path, init, timeoutMs);
     const text = await res.text();
     if (!res.ok) {
       throw new Error(`Request failed (${res.status}): ${text || res.statusText}`);
@@ -47,7 +47,7 @@ export class GiteaClient {
     return text;
   }
 
-  private async request(path: string, init?: RequestInit): Promise<Response> {
+  private async request(path: string, init?: RequestInit, timeoutOverride?: number): Promise<Response> {
     const url = `${this.baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
     const headers = new Headers(init?.headers ?? {});
     headers.set('accept', 'application/json');
@@ -55,7 +55,8 @@ export class GiteaClient {
       headers.set('authorization', `token ${this.token}`);
     }
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timeoutMs = timeoutOverride ?? this.timeoutMs;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       logDebug(`Request ${init?.method ?? 'GET'} ${url}`);
       const response = await fetch(url, {

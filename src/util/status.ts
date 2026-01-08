@@ -40,8 +40,11 @@ export function normalizeConclusion(value?: string | null): NormalizedConclusion
 export function statusIconForRun(run: WorkflowRun): string {
   const status = normalizeStatus(run.status);
   const conclusion = normalizeConclusion(run.conclusion);
-  if (status === 'running' || status === 'queued') {
-    return '$(sync~spin)';
+  if (status === 'queued') {
+    return '$(history)';
+  }
+  if (status === 'running') {
+    return '$(run)';
   }
   switch (conclusion) {
     case 'success':
@@ -61,8 +64,11 @@ export function statusIconForRun(run: WorkflowRun): string {
 export function statusIconForJob(job: Job): string {
   const status = normalizeStatus(job.status);
   const conclusion = normalizeConclusion(job.conclusion);
-  if (status === 'running' || status === 'queued') {
-    return '$(sync~spin)';
+  if (status === 'queued') {
+    return '$(history)';
+  }
+  if (status === 'running') {
+    return '$(run)';
   }
   switch (conclusion) {
     case 'success':

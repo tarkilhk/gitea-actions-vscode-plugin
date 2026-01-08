@@ -8,27 +8,44 @@ import { ActionsTreeProvider } from './views/actionsTreeProvider';
 import { registerCommands } from './controllers/commands';
 import { RefreshController } from './controllers/refreshController';
 import { discoverWorkspaceRepos, loadPinned, savePinned, buildPinnedRepoRefs } from './gitea/discovery';
-import { logError, logWarn } from './util/logging';
+import { logError, logWarn, logDebug, setVerboseLogging } from './util/logging';
 import { normalizeStatus } from './util/status';
 
 let settings: ExtensionSettings;
 let cachedToken: string | undefined;
 let secretStorage: vscode.SecretStorage;
-const treeProvider = new ActionsTreeProvider();
+const workspaceProvider = new ActionsTreeProvider();
+const pinnedProvider = new ActionsTreeProvider();
+let workspaceTree: vscode.TreeView<any>;
+let pinnedTree: vscode.TreeView<any>;
 let refreshController: RefreshController | undefined;
 let lastRunsByRepo = new Map<string, WorkflowRun[]>();
 let statusBarItem: vscode.StatusBarItem;
 let pinnedRepos: PinnedRepo[] = [];
 let refreshInFlight: Promise<boolean> | undefined;
+const inFlightJobFetch = new Map<string, Promise<void>>();
+const JOBS_TIMEOUT_MS = 4000;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  setVerboseLogging(true);
   settings = getSettings();
   secretStorage = context.secrets;
   cachedToken = await getToken(secretStorage);
   pinnedRepos = await loadPinned(context.globalState);
 
-  const treeDisposable = vscode.window.registerTreeDataProvider('giteaActions.runs', treeProvider);
-  context.subscriptions.push(treeDisposable);
+  workspaceTree = vscode.window.createTreeView('giteaActions.runs', {
+    treeDataProvider: workspaceProvider,
+    showCollapseAll: true
+  });
+  pinnedTree = vscode.window.createTreeView('giteaActions.runsPinned', {
+    treeDataProvider: pinnedProvider,
+    showCollapseAll: true
+  });
+  context.subscriptions.push(workspaceTree, pinnedTree);
+  context.subscriptions.push(
+    workspaceTree.onDidExpandElement((e) => handleExpand(e.element)),
+    pinnedTree.onDidExpandElement((e) => handleExpand(e.element))
+  );
 
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   statusBarItem.command = 'workbench.view.extension.giteaActions';
@@ -100,44 +117,51 @@ async function refreshAll(): Promise<boolean> {
 }
 
 async function doRefreshAll(): Promise<boolean> {
+  const refreshStarted = Date.now();
   const api = await ensureApi();
   if (!api) {
-    treeProvider.clear();
+    workspaceProvider.clear();
+    pinnedProvider.clear();
     lastRunsByRepo.clear();
     updateStatusBar('Gitea: not configured');
     return false;
   }
 
-  const { repos, pinnedKeys } = await resolveRepos(api);
-  treeProvider.setRepositories(repos, pinnedKeys);
+  const { workspaceRepos, pinnedRefs, pinnedKeys } = await resolveRepos(api);
+  workspaceProvider.setRepositories(workspaceRepos, pinnedKeys);
+  pinnedProvider.setRepositories(pinnedRefs, pinnedKeys);
+
+  const combinedRepos = mergeRepos(workspaceRepos, pinnedRefs);
   let anyRunning = false;
 
-  await runWithLimit(repos, 4, async (repo) => {
-    treeProvider.setRepoLoading(repo);
+  await runWithLimit(combinedRepos, 4, async (repo) => {
+    workspaceProvider.setRepoLoading(repo);
+    pinnedProvider.setRepoLoading(repo);
     try {
+      const runStart = Date.now();
       const runs = await api.listRuns(repo, settings.maxRunsPerRepo);
       const limitedRuns = runs.slice(0, settings.maxRunsPerRepo);
-      treeProvider.updateRuns(repo, limitedRuns);
+      workspaceProvider.updateRuns(repo, limitedRuns);
+      pinnedProvider.updateRuns(repo, limitedRuns);
       lastRunsByRepo.set(repoKey(repo), limitedRuns);
+      logDebug(`Runs fetched for ${repo.owner}/${repo.name}: ${limitedRuns.length} in ${Date.now() - runStart}ms`);
       if (limitedRuns.some((r) => isRunning(r.status))) {
         anyRunning = true;
       }
-      await runWithLimit(limitedRuns, 3, async (run) => {
-        const jobs = await api.listJobs(repo, run.id);
-        treeProvider.updateJobs(repo, run.id, jobs);
-      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      treeProvider.setRepoError(repo, message);
+      workspaceProvider.setRepoError(repo, message);
+      pinnedProvider.setRepoError(repo, message);
       logWarn(`Failed to refresh ${repo.owner}/${repo.name}: ${message}`);
     }
   });
 
+  logDebug(`Refresh cycle completed in ${Date.now() - refreshStarted}ms`);
   updateStatusBar();
   return anyRunning;
 }
 
-async function resolveRepos(api: GiteaApi): Promise<{ repos: RepoRef[]; pinnedKeys: Set<string> }> {
+async function resolveRepos(api: GiteaApi): Promise<{ workspaceRepos: RepoRef[]; pinnedRefs: RepoRef[]; pinnedKeys: Set<string> }> {
   settings = getSettings();
   const pinnedRefs = buildPinnedRepoRefs(settings.baseUrl, pinnedRepos);
   const pinnedKeys = new Set(pinnedRefs.map((r) => repoKey(r)));
@@ -148,17 +172,17 @@ async function resolveRepos(api: GiteaApi): Promise<{ repos: RepoRef[]; pinnedKe
     baseHost = '';
   }
 
-  let discovered: RepoRef[] = [];
+  let workspaceRepos: RepoRef[] = [];
   const folders = vscode.workspace.workspaceFolders ?? [];
 
   if (settings.discoveryMode === 'workspace') {
-    discovered = await discoverWorkspaceRepos(settings.baseUrl, folders);
+    workspaceRepos = await discoverWorkspaceRepos(settings.baseUrl, folders);
   } else if (settings.discoveryMode === 'pinned') {
-    discovered = [];
+    workspaceRepos = [];
   } else if (settings.discoveryMode === 'allAccessible') {
     try {
       const repos = await api.listAccessibleRepos();
-      discovered = repos.map((repo) => ({
+      workspaceRepos = repos.map((repo) => ({
         host: baseHost,
         owner: repo.owner,
         name: repo.name,
@@ -166,18 +190,11 @@ async function resolveRepos(api: GiteaApi): Promise<{ repos: RepoRef[]; pinnedKe
       }));
     } catch (err) {
       logWarn(`Failed to list accessible repositories: ${String(err)}`);
-      discovered = await discoverWorkspaceRepos(settings.baseUrl, folders);
+      workspaceRepos = await discoverWorkspaceRepos(settings.baseUrl, folders);
     }
   }
 
-  const merged: RepoRef[] = [...discovered];
-  for (const pinned of pinnedRefs) {
-    if (!merged.find((r) => repoKey(r) === repoKey(pinned))) {
-      merged.push(pinned);
-    }
-  }
-
-  return { repos: merged, pinnedKeys };
+  return { workspaceRepos, pinnedRefs, pinnedKeys };
 }
 
 async function setTokenCommand(context: vscode.ExtensionContext): Promise<void> {
@@ -195,7 +212,8 @@ async function clearTokenCommand(context: vscode.ExtensionContext): Promise<void
   await clearToken(context.secrets);
   cachedToken = undefined;
   vscode.window.showInformationMessage('Gitea token cleared.');
-  treeProvider.clear();
+  workspaceProvider.clear();
+  pinnedProvider.clear();
   updateStatusBar('Gitea: token cleared');
 }
 
@@ -268,6 +286,48 @@ async function unpinRepo(context: vscode.ExtensionContext, repo: RepoRef): Promi
   scheduleRefresh();
 }
 
+async function handleExpand(element: any): Promise<void> {
+  if (!element || element.type !== 'run') {
+    return;
+  }
+  await fetchJobsForRun(element.repo, element.run.id);
+}
+
+async function fetchJobsForRun(repo: RepoRef, runId: number | string): Promise<void> {
+  const key = `${repoKey(repo)}#${runId}`;
+  if (inFlightJobFetch.has(key)) {
+    return inFlightJobFetch.get(key);
+  }
+  const api = await ensureApi();
+  if (!api) {
+    workspaceProvider.setRunJobsError(repo, runId, 'Configure baseUrl and token');
+    pinnedProvider.setRunJobsError(repo, runId, 'Configure baseUrl and token');
+    return;
+  }
+  workspaceProvider.setRunJobsLoading(repo, runId);
+  pinnedProvider.setRunJobsLoading(repo, runId);
+  const fetchPromise = (async () => {
+    try {
+      logDebug(`Fetching jobs for ${repo.owner}/${repo.name} run ${runId} (limit=${settings.maxJobsPerRun}, timeout=${JOBS_TIMEOUT_MS}ms)`);
+      const start = Date.now();
+      const jobs = await api.listJobs(repo, runId, { limit: settings.maxJobsPerRun, timeoutMs: JOBS_TIMEOUT_MS });
+      const elapsed = Date.now() - start;
+      logDebug(`Fetched ${jobs.length} jobs for ${repo.owner}/${repo.name} run ${runId} in ${elapsed}ms`);
+      workspaceProvider.updateJobs(repo, runId, jobs);
+      pinnedProvider.updateJobs(repo, runId, jobs);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logWarn(`Failed to fetch jobs for ${repo.owner}/${repo.name} run ${runId}: ${message}`);
+      workspaceProvider.setRunJobsError(repo, runId, message);
+      pinnedProvider.setRunJobsError(repo, runId, message);
+    } finally {
+      inFlightJobFetch.delete(key);
+    }
+  })();
+  inFlightJobFetch.set(key, fetchPromise);
+  await fetchPromise;
+}
+
 function scheduleRefresh(): void {
   refreshController?.stop();
   refreshController?.start();
@@ -315,4 +375,17 @@ async function runWithLimit<T>(items: T[], limit: number, fn: (item: T) => Promi
 
 function repoKey(repo: RepoRef): string {
   return `${repo.owner}/${repo.name}`;
+}
+
+function mergeRepos(a: RepoRef[], b: RepoRef[]): RepoRef[] {
+  const result: RepoRef[] = [];
+  const seen = new Set<string>();
+  for (const repo of [...a, ...b]) {
+    const key = repoKey(repo);
+    if (!seen.has(key)) {
+      result.push(repo);
+      seen.add(key);
+    }
+  }
+  return result;
 }

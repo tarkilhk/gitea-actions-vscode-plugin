@@ -9,6 +9,7 @@ export interface ExtensionSettings {
   runningIntervalSeconds: number;
   idleIntervalSeconds: number;
   maxRunsPerRepo: number;
+  maxJobsPerRun: number;
 }
 
 export function getSettings(): ExtensionSettings {
@@ -19,7 +20,8 @@ export function getSettings(): ExtensionSettings {
     discoveryMode: cfg.get<DiscoveryMode>('discovery.mode', 'workspace'),
     runningIntervalSeconds: cfg.get<number>('refresh.runningIntervalSeconds', 15),
     idleIntervalSeconds: cfg.get<number>('refresh.idleIntervalSeconds', 60),
-    maxRunsPerRepo: cfg.get<number>('maxRunsPerRepo', 20)
+    maxRunsPerRepo: cfg.get<number>('maxRunsPerRepo', 20),
+    maxJobsPerRun: cfg.get<number>('maxJobsPerRun', 50)
   };
 }
 
