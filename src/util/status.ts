@@ -1,4 +1,4 @@
-import { WorkflowRun, Job } from '../gitea/models';
+import { WorkflowRun, Job, Step } from '../gitea/models';
 
 export type NormalizedStatus = 'queued' | 'running' | 'completed' | 'unknown';
 export type NormalizedConclusion = 'success' | 'failure' | 'cancelled' | 'skipped' | 'unknown';
@@ -44,7 +44,7 @@ export function statusIconForRun(run: WorkflowRun): string {
     return '$(history)';
   }
   if (status === 'running') {
-    return '$(run)';
+    return '$(loading~spin)';
   }
   switch (conclusion) {
     case 'success':
@@ -68,7 +68,31 @@ export function statusIconForJob(job: Job): string {
     return '$(history)';
   }
   if (status === 'running') {
-    return '$(run)';
+    return '$(loading~spin)';
+  }
+  switch (conclusion) {
+    case 'success':
+      return '$(check)';
+    case 'failure':
+      return '$(error)';
+    case 'cancelled':
+      return '$(circle-slash)';
+    case 'skipped':
+      return '$(debug-step-over)';
+    case 'unknown':
+    default:
+      return '$(question)';
+  }
+}
+
+export function statusIconForStep(step: Step): string {
+  const status = normalizeStatus(step.status);
+  const conclusion = normalizeConclusion(step.conclusion);
+  if (status === 'queued') {
+    return '$(history)';
+  }
+  if (status === 'running') {
+    return '$(loading~spin)';
   }
   switch (conclusion) {
     case 'success':

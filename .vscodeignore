@@ -1,8 +1,38 @@
+# Development files
 .gitignore
+.git/**
+.github/**
+.vscode/**
 tsconfig.json
+esbuild.js
 **/*.ts
+!**/*.d.ts
 **/*.map
 **/*.test.ts
+**/*.spec.ts
+
+# Build artifacts (keep only bundled extension.js)
+dist/**/*
+!dist/extension.js
+
+# Dependencies (all should be bundled, so exclude node_modules)
+node_modules/**
 package-lock.json
+
+# Documentation and planning (keep LICENSE and CHANGELOG)
+README.md
 gitea-actions-vscode-extension-plan.md
+
+# Scripts
+scripts/**
+
+# Source files (not needed in package)
 src/**
+
+# IDE and editor files
+*.swp
+*.swo
+*~
+.DS_Store
+.vscode-test/**
+*.vsix
