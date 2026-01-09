@@ -1,5 +1,7 @@
 import { WorkflowRun, Job, Step } from '../gitea/models';
 
+export type StatusIcon = { id: string; color?: string };
+
 export type NormalizedStatus = 'queued' | 'running' | 'completed' | 'unknown';
 export type NormalizedConclusion = 'success' | 'failure' | 'cancelled' | 'skipped' | 'unknown';
 
@@ -37,74 +39,74 @@ export function normalizeConclusion(value?: string | null): NormalizedConclusion
   return 'unknown';
 }
 
-export function statusIconForRun(run: WorkflowRun): string {
+export function statusIconForRun(run: WorkflowRun): StatusIcon {
   const status = normalizeStatus(run.status);
   const conclusion = normalizeConclusion(run.conclusion);
   if (status === 'queued') {
-    return '$(history)';
+    return { id: 'history', color: 'charts.blue' };
   }
   if (status === 'running') {
-    return '$(loading~spin)';
+    return { id: 'loading~spin', color: 'charts.yellow' };
   }
   switch (conclusion) {
     case 'success':
-      return '$(check)';
+      return { id: 'check', color: 'charts.green' };
     case 'failure':
-      return '$(error)';
+      return { id: 'error', color: 'charts.red' };
     case 'cancelled':
-      return '$(circle-slash)';
+      return { id: 'circle-slash', color: 'descriptionForeground' };
     case 'skipped':
-      return '$(debug-step-over)';
+      return { id: 'debug-step-over', color: 'descriptionForeground' };
     case 'unknown':
     default:
-      return '$(question)';
+      return { id: 'question', color: 'descriptionForeground' };
   }
 }
 
-export function statusIconForJob(job: Job): string {
+export function statusIconForJob(job: Job): StatusIcon {
   const status = normalizeStatus(job.status);
   const conclusion = normalizeConclusion(job.conclusion);
   if (status === 'queued') {
-    return '$(history)';
+    return { id: 'history', color: 'charts.blue' };
   }
   if (status === 'running') {
-    return '$(loading~spin)';
+    return { id: 'loading~spin', color: 'charts.yellow' };
   }
   switch (conclusion) {
     case 'success':
-      return '$(check)';
+      return { id: 'check', color: 'charts.green' };
     case 'failure':
-      return '$(error)';
+      return { id: 'error', color: 'charts.red' };
     case 'cancelled':
-      return '$(circle-slash)';
+      return { id: 'circle-slash', color: 'descriptionForeground' };
     case 'skipped':
-      return '$(debug-step-over)';
+      return { id: 'debug-step-over', color: 'descriptionForeground' };
     case 'unknown':
     default:
-      return '$(question)';
+      return { id: 'question', color: 'descriptionForeground' };
   }
 }
 
-export function statusIconForStep(step: Step): string {
+export function statusIconForStep(step: Step): StatusIcon {
   const status = normalizeStatus(step.status);
   const conclusion = normalizeConclusion(step.conclusion);
   if (status === 'queued') {
-    return '$(history)';
+    return { id: 'history', color: 'charts.blue' };
   }
   if (status === 'running') {
-    return '$(loading~spin)';
+    return { id: 'loading~spin', color: 'charts.yellow' };
   }
   switch (conclusion) {
     case 'success':
-      return '$(check)';
+      return { id: 'check', color: 'charts.green' };
     case 'failure':
-      return '$(error)';
+      return { id: 'error', color: 'charts.red' };
     case 'cancelled':
-      return '$(circle-slash)';
+      return { id: 'circle-slash', color: 'descriptionForeground' };
     case 'skipped':
-      return '$(debug-step-over)';
+      return { id: 'debug-step-over', color: 'descriptionForeground' };
     case 'unknown':
     default:
-      return '$(question)';
+      return { id: 'question', color: 'descriptionForeground' };
   }
 }

@@ -1,4 +1,4 @@
-name: Publish Extension to VS Code Marketplace and Open VSX Registry
+name: Publish Extension
 
 on:
   release:
