@@ -24,6 +24,9 @@
     "compile": "node esbuild.js --production",
     "watch": "node esbuild.js --watch",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "package": "npm run compile && npx @vscode/vsce package",
     "release": "node scripts/release.js",
     "release:patch": "node scripts/release.js patch",
@@ -280,16 +283,19 @@
     }
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@types/node": "^25.0.3",
     "@types/vscode": "^1.105.0",
-    "typescript": "^5.9.3",
+    "@typescript-eslint/eslint-plugin": "^8.46.0",
+    "@typescript-eslint/parser": "^8.46.0",
+    "@vitest/coverage-v8": "^4.0.16",
     "@vscode/vsce": "^3.7.1",
     "esbuild": "^0.24.0",
     "eslint": "^9.39.2",
-    "@eslint/js": "^9.39.2",
-    "@typescript-eslint/parser": "^8.46.0",
-    "@typescript-eslint/eslint-plugin": "^8.46.0",
-    "typescript-eslint": "^8.46.0"
+    "msw": "^2.12.7",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^4.0.16"
   },
   "dependencies": {
     "undici": "^7.18.2"

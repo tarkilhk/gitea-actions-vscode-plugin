@@ -16,7 +16,8 @@ export type ActionVariable = {
   repoId?: number;
 };
 
-function pickArray<T = unknown>(payload: unknown, fallback: T[] = []): T[] {
+// Exported for testing
+export function pickArray<T = unknown>(payload: unknown, fallback: T[] = []): T[] {
   if (Array.isArray(payload)) {
     return payload as T[];
   }
@@ -31,7 +32,8 @@ function pickArray<T = unknown>(payload: unknown, fallback: T[] = []): T[] {
   return fallback;
 }
 
-function mapRun(repo: RepoRef, raw: unknown): WorkflowRun {
+// Exported for testing
+export function mapRun(repo: RepoRef, raw: unknown): WorkflowRun {
   const r = raw as Record<string, unknown>;
   const status = normalizeStatus(r.status as string | null | undefined);
   const conclusion = normalizeConclusion(r.conclusion as string | null | undefined);
@@ -74,7 +76,8 @@ function mapRun(repo: RepoRef, raw: unknown): WorkflowRun {
   };
 }
 
-function mapStep(raw: unknown): Step {
+// Exported for testing
+export function mapStep(raw: unknown): Step {
   const r = raw as Record<string, unknown>;
   const status = normalizeStatus(r.status as string | null | undefined);
   const conclusion = normalizeConclusion(r.conclusion as string | null | undefined);
@@ -89,7 +92,8 @@ function mapStep(raw: unknown): Step {
   };
 }
 
-function mapJob(raw: unknown): Job {
+// Exported for testing
+export function mapJob(raw: unknown): Job {
   const r = raw as Record<string, unknown>;
   const status = normalizeStatus(r.status as string | null | undefined);
   const conclusion = normalizeConclusion(r.conclusion as string | null | undefined);
