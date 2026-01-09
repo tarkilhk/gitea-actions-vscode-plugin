@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ActionsNode, JobNode, RepoNode, RunNode } from '../views/nodes';
+import { ActionsNode, JobNode, RepoNode } from '../views/nodes';
 import { RepoRef } from '../gitea/models';
 
 export type CommandHandlers = {
