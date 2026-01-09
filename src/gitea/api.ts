@@ -2,6 +2,20 @@ import { GiteaClient } from './client';
 import { Job, RepoRef, WorkflowRun, Step } from './models';
 import { normalizeConclusion, normalizeStatus } from '../util/status';
 
+export type Secret = {
+  name: string;
+  description: string;
+  createdAt?: string;
+};
+
+export type ActionVariable = {
+  name: string;
+  description: string;
+  data: string;
+  ownerId?: number;
+  repoId?: number;
+};
+
 function pickArray<T = unknown>(payload: unknown, fallback: T[] = []): T[] {
   if (Array.isArray(payload)) {
     return payload as T[];
@@ -21,9 +35,30 @@ function mapRun(repo: RepoRef, raw: unknown): WorkflowRun {
   const r = raw as Record<string, unknown>;
   const status = normalizeStatus(r.status as string | null | undefined);
   const conclusion = normalizeConclusion(r.conclusion as string | null | undefined);
+  const workflowName =
+    (r.workflow as { name?: string } | undefined)?.name ??
+    (r.workflow_name as string | undefined) ??
+    (r.workflowName as string | undefined) ??
+    (r.name as string | undefined);
+  const displayTitle = (r.display_title ?? r.displayTitle ?? r.title ?? r.name ?? workflowName ?? 'Workflow run') as string;
+  const actorObj = r.actor as Record<string, unknown> | undefined;
+  const actor =
+    (actorObj?.['login'] as string | undefined) ??
+    (actorObj?.['username'] as string | undefined) ??
+    (actorObj?.['full_name'] as string | undefined) ??
+    (r.trigger_user as string | undefined) ??
+    (r.trigger_user_name as string | undefined) ??
+    (r.triggerUser as string | undefined);
+  const headCommit = (r.head_commit ?? r.headCommit) as { message?: string } | undefined;
+  const commitMessage = (headCommit?.message ?? r.commit_message ?? r.commitMessage ?? displayTitle) as string | undefined;
   return {
     id: (r.id ?? r.run_id ?? r.workflow_id ?? String(Math.random())) as string | number,
-    name: (r.display_title ?? r.title ?? r.name ?? r.workflow_name ?? `${repo.owner}/${repo.name}`) as string,
+    name: displayTitle ?? workflowName ?? 'Workflow run',
+    workflowName,
+    displayTitle,
+    workflowPath: r.path as string | undefined,
+    actor,
+    commitMessage,
     runNumber: (r.run_number ?? r.runNumber) as number | undefined,
     runAttempt: (r.run_attempt ?? r.runAttempt) as number | undefined,
     event: r.event as string | undefined,
@@ -106,6 +141,38 @@ export class GiteaApi {
     return runs.map((run) => mapRun(repo, run));
   }
 
+  async listWorkflows(
+    repo: RepoRef
+  ): Promise<{ id: string; name: string; path?: string; htmlUrl?: string; url?: string }[]> {
+    const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/workflows`;
+    const payload = await this.client.getJson<unknown>(path);
+    const workflows = pickArray<unknown>(payload, (payload as { workflows?: unknown[] })?.workflows ?? []);
+    return workflows
+      .map((wf) => {
+        const w = wf as Record<string, unknown>;
+        const id = (w.id ?? w.path ?? w.name) as string | undefined;
+        const name = (w.name ?? w.display_title ?? w.title ?? id) as string | undefined;
+        if (!id || !name) {
+          return undefined;
+        }
+        const result: { id: string; name: string; path?: string; htmlUrl?: string; url?: string } = {
+          id,
+          name
+        };
+        if (w.path) {
+          result.path = w.path as string;
+        }
+        if (w.html_url) {
+          result.htmlUrl = w.html_url as string;
+        }
+        if (w.url) {
+          result.url = w.url as string;
+        }
+        return result;
+      })
+      .filter((w): w is { id: string; name: string; path?: string; htmlUrl?: string; url?: string } => w !== undefined);
+  }
+
   async listJobs(
     repo: RepoRef,
     runId: number | string,
@@ -118,6 +185,12 @@ export class GiteaApi {
     return jobs.map((job) => mapJob(job));
   }
 
+  async getJob(repo: RepoRef, jobId: number | string, options?: { timeoutMs?: number }): Promise<Job> {
+    const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/jobs/${jobId}`;
+    const payload = await this.client.getJson<unknown>(path, undefined, options?.timeoutMs);
+    return mapJob(payload);
+  }
+
   async getJobLogs(repo: RepoRef, jobId: number | string): Promise<string> {
     return this.client.getText(`/api/v1/repos/${repo.owner}/${repo.name}/actions/jobs/${jobId}/logs`, {
       headers: {
@@ -125,4 +198,107 @@ export class GiteaApi {
       }
     });
   }
+
+  async listSecrets(repo: RepoRef, page?: number, limit?: number): Promise<Secret[]> {
+    const qp = new URLSearchParams();
+    if (page) qp.set('page', String(page));
+    if (limit) qp.set('limit', String(limit));
+    const query = qp.toString();
+    const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/secrets${query ? `?${query}` : ''}`;
+    const payload = await this.client.getJson<unknown[]>(path);
+    return (Array.isArray(payload) ? payload : []).map((s) => mapSecret(s));
+  }
+
+  async createOrUpdateSecret(repo: RepoRef, secretName: string, data: string, description?: string): Promise<void> {
+    const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/secrets/${encodeURIComponent(secretName)}`;
+    const res = await this.client.request(path, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ data, description: description ?? '' })
+    } as RequestInit);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Request failed (${res.status}): ${text || res.statusText}`);
+    }
+  }
+
+  async deleteSecret(repo: RepoRef, secretName: string): Promise<void> {
+    const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/secrets/${encodeURIComponent(secretName)}`;
+    const res = await this.client.request(path, { method: 'DELETE' } as RequestInit);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Request failed (${res.status}): ${text || res.statusText}`);
+    }
+  }
+
+  async listVariables(repo: RepoRef, page?: number, limit?: number): Promise<ActionVariable[]> {
+    const qp = new URLSearchParams();
+    if (page) qp.set('page', String(page));
+    if (limit) qp.set('limit', String(limit));
+    const query = qp.toString();
+    const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/variables${query ? `?${query}` : ''}`;
+    const payload = await this.client.getJson<unknown[]>(path);
+    return (Array.isArray(payload) ? payload : []).map((v) => mapVariable(v));
+  }
+
+  async getVariable(repo: RepoRef, variableName: string): Promise<ActionVariable> {
+    const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/variables/${encodeURIComponent(variableName)}`;
+    const payload = await this.client.getJson<unknown>(path);
+    return mapVariable(payload);
+  }
+
+  async createVariable(repo: RepoRef, variableName: string, value: string, description?: string): Promise<void> {
+    const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/variables/${encodeURIComponent(variableName)}`;
+    const res = await this.client.request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ value, description: description ?? '' })
+    } as RequestInit);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Request failed (${res.status}): ${text || res.statusText}`);
+    }
+  }
+
+  async updateVariable(repo: RepoRef, variableName: string, value: string, description?: string, newName?: string): Promise<void> {
+    const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/variables/${encodeURIComponent(variableName)}`;
+    const res = await this.client.request(path, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ value, description: description ?? '', name: newName ?? '' })
+    } as RequestInit);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Request failed (${res.status}): ${text || res.statusText}`);
+    }
+  }
+
+  async deleteVariable(repo: RepoRef, variableName: string): Promise<void> {
+    const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/variables/${encodeURIComponent(variableName)}`;
+    const res = await this.client.request(path, { method: 'DELETE' } as RequestInit);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Request failed (${res.status}): ${text || res.statusText}`);
+    }
+  }
+}
+
+function mapSecret(raw: unknown): Secret {
+  const r = raw as Record<string, unknown>;
+  return {
+    name: (r.name as string) ?? '',
+    description: (r.description as string) ?? '',
+    createdAt: (r.created_at as string) ?? (r.createdAt as string)
+  };
+}
+
+function mapVariable(raw: unknown): ActionVariable {
+  const r = raw as Record<string, unknown>;
+  return {
+    name: (r.name as string) ?? '',
+    description: (r.description as string) ?? '',
+    data: (r.data as string) ?? (r.value as string) ?? '',
+    ownerId: (r.owner_id as number | undefined) ?? (r.ownerId as number | undefined),
+    repoId: (r.repo_id as number | undefined) ?? (r.repoId as number | undefined)
+  };
 }

@@ -28,3 +28,7 @@ export function iconForStep(step: Step): vscode.ThemeIcon {
 export const repoIcon = new vscode.ThemeIcon('repo');
 export const errorIcon = new vscode.ThemeIcon('alert');
 export const infoIcon = new vscode.ThemeIcon('info');
+export const secretIcon = new vscode.ThemeIcon('lock');
+export const variableIcon = new vscode.ThemeIcon('symbol-variable');
+export const settingsIcon = new vscode.ThemeIcon('settings-gear');
+export const folderIcon = new vscode.ThemeIcon('folder');

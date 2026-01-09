@@ -5,7 +5,8 @@ import { GiteaClient } from './gitea/client';
 import { GiteaApi } from './gitea/api';
 import { RepoRef, WorkflowRun, PinnedRepo, Job, Step } from './gitea/models';
 import { ActionsTreeProvider } from './views/actionsTreeProvider';
-import { ActionsNode } from './views/nodes';
+import { SettingsTreeProvider } from './views/settingsTreeProvider';
+import { ActionsNode, SecretsRootNode, SecretNode, VariablesRootNode, VariableNode } from './views/nodes';
 import { registerCommands } from './controllers/commands';
 import { RefreshController } from './controllers/refreshController';
 import { discoverWorkspaceRepos, loadPinned, savePinned, buildPinnedRepoRefs } from './gitea/discovery';
@@ -15,17 +16,21 @@ import { normalizeStatus } from './util/status';
 let settings: ExtensionSettings;
 let cachedToken: string | undefined;
 let secretStorage: vscode.SecretStorage;
-const workspaceProvider = new ActionsTreeProvider();
-const pinnedProvider = new ActionsTreeProvider();
+const workspaceProvider = new ActionsTreeProvider('runs');
+const pinnedProvider = new ActionsTreeProvider('workflows');
+const settingsProvider = new SettingsTreeProvider();
 let workspaceTree: vscode.TreeView<ActionsNode>;
 let pinnedTree: vscode.TreeView<ActionsNode>;
+let settingsTree: vscode.TreeView<ActionsNode>;
 let refreshController: RefreshController | undefined;
 const lastRunsByRepo = new Map<string, WorkflowRun[]>();
+const workflowNameCache = new Map<string, Map<string, string>>();
 let statusBarItem: vscode.StatusBarItem;
 let pinnedRepos: PinnedRepo[] = [];
 let refreshInFlight: Promise<boolean> | undefined;
 const inFlightJobFetch = new Map<string, Promise<Job[] | undefined>>();
 const jobRefreshTimers = new Map<string, NodeJS.Timeout>();
+const jobStepsCache = new Map<string, Step[]>();
 const JOBS_TIMEOUT_MS = 4000;
 
 class LiveLogContentProvider implements vscode.TextDocumentContentProvider {
@@ -50,6 +55,31 @@ class LiveLogContentProvider implements vscode.TextDocumentContentProvider {
 const logContentProvider = new LiveLogContentProvider();
 const liveLogStreams = new Map<string, { stopped: boolean }>();
 
+/**
+ * Shows a toast notification that auto-dismisses after a few seconds.
+ * Uses VS Code's progress notification for info messages (auto-dismisses).
+ * Warnings and errors use standard message dialogs that require dismissal.
+ */
+function showToast(message: string, type: 'info' | 'warning' | 'error' = 'info', timeoutMs: number = 4000): void {
+  if (type === 'warning') {
+    void vscode.window.showWarningMessage(message);
+  } else if (type === 'error') {
+    void vscode.window.showErrorMessage(message);
+  } else {
+    // Use progress notification for info messages - auto-dismisses after timeout
+    void vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: message,
+        cancellable: false
+      },
+      async () => {
+        await new Promise((resolve) => setTimeout(resolve, timeoutMs));
+      }
+    );
+  }
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   setVerboseLogging(true);
   settings = getSettings();
@@ -65,7 +95,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     treeDataProvider: pinnedProvider,
     showCollapseAll: true
   });
-  context.subscriptions.push(workspaceTree, pinnedTree);
+  settingsTree = vscode.window.createTreeView('giteaActions.settings', {
+    treeDataProvider: settingsProvider,
+    showCollapseAll: true
+  });
+  context.subscriptions.push(workspaceTree, pinnedTree, settingsTree);
   context.subscriptions.push(
     workspaceTree.onDidExpandElement((e) => handleExpand(e.element)),
     pinnedTree.onDidExpandElement((e) => handleExpand(e.element))
@@ -94,7 +128,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     viewJobLogs: (node) => viewJobLogs(node),
     openInBrowser: (node) => openInBrowser(node),
     pinRepo: (repo) => pinRepo(context, repo),
-    unpinRepo: (repo) => unpinRepo(context, repo)
+    unpinRepo: (repo) => unpinRepo(context, repo),
+    refreshSecrets: (node) => refreshSecrets(node),
+    refreshVariables: (node) => refreshVariables(node),
+    createSecret: (node) => createSecret(node),
+    updateSecret: (node) => updateSecret(node),
+    deleteSecret: (node) => deleteSecret(node),
+    createVariable: (node) => createVariable(node),
+    updateVariable: (node) => updateVariable(node),
+    deleteVariable: (node) => deleteVariable(node),
+    openBaseUrlSettings: () => openBaseUrlSettings()
   });
 
   context.subscriptions.push(
@@ -112,10 +155,61 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }));
   context.subscriptions.push(refreshController);
   refreshController.start();
+
+  // Refresh when views become visible to ensure fresh data
+  context.subscriptions.push(
+    workspaceTree.onDidChangeVisibility((e) => {
+      if (e.visible) {
+        void refreshAll();
+      }
+    }),
+    settingsTree.onDidChangeVisibility((e) => {
+      if (e.visible) {
+        void refreshAll();
+      }
+    })
+  );
+  
+  // Initialize token status (refreshAll will be triggered by refresh controller immediately)
+  settingsProvider.setTokenStatus(!!cachedToken);
 }
 
 export function deactivate(): void {
   refreshController?.dispose();
+}
+
+export type ConfigError = {
+  message: string;
+  action: 'configureBaseUrl' | 'setToken';
+};
+
+async function getConfigErrors(): Promise<ConfigError[]> {
+  settings = getSettings();
+  const hasBaseUrl = !!settings.baseUrl;
+  const token = cachedToken ?? (await getToken(secretStorage));
+  const hasToken = !!token;
+  
+  const errors: ConfigError[] = [];
+  if (!hasBaseUrl) {
+    errors.push({ message: 'Configure base URL', action: 'configureBaseUrl' });
+  }
+  if (!hasToken) {
+    errors.push({ message: 'Configure token', action: 'setToken' });
+  }
+  return errors;
+}
+
+// Helper function for backward compatibility - returns combined message string
+async function getConfigError(): Promise<string | undefined> {
+  const errors = await getConfigErrors();
+  if (errors.length === 0) {
+    return undefined;
+  }
+  if (errors.length === 1) {
+    return errors[0].message;
+  }
+  // Combine multiple errors into a single message for status bar/warnings
+  return errors.map(e => e.message).join(' and ');
 }
 
 async function ensureApi(): Promise<GiteaApi | undefined> {
@@ -146,6 +240,7 @@ async function refreshAll(): Promise<boolean> {
   refreshInFlight = promise;
   const result = await promise;
   refreshInFlight = undefined;
+  workflowNameCache.clear();
   return result;
 }
 
@@ -153,8 +248,13 @@ async function doRefreshAll(): Promise<boolean> {
   const refreshStarted = Date.now();
   const api = await ensureApi();
   if (!api) {
+    const configErrors = await getConfigErrors();
     workspaceProvider.clear();
     pinnedProvider.clear();
+    if (configErrors.length > 0) {
+      workspaceProvider.setConfigErrors(configErrors);
+      pinnedProvider.setConfigErrors(configErrors);
+    }
     lastRunsByRepo.clear();
     updateStatusBar('Gitea: not configured');
     return false;
@@ -162,9 +262,21 @@ async function doRefreshAll(): Promise<boolean> {
 
   const { workspaceRepos, pinnedRefs, pinnedKeys } = await resolveRepos(api);
   workspaceProvider.setRepositories(workspaceRepos, pinnedKeys);
-  pinnedProvider.setRepositories(pinnedRefs, pinnedKeys);
+  const pinnedSource = pinnedRefs.length ? pinnedRefs : workspaceRepos;
+  pinnedProvider.setRepositories(pinnedSource, pinnedKeys);
 
   const combinedRepos = mergeRepos(workspaceRepos, pinnedRefs);
+  
+  // Update settings view with the first available repo
+  settingsProvider.setTokenStatus(!!cachedToken);
+  if (combinedRepos.length > 0) {
+    const settingsRepo = combinedRepos[0];
+    settingsProvider.setRepository(settingsRepo);
+    void refreshSecretsForRepo(settingsRepo);
+    void refreshVariablesForRepo(settingsRepo);
+  } else {
+    settingsProvider.setRepository(undefined);
+  }
   let anyRunning = false;
 
   await runWithLimit(combinedRepos, 4, async (repo) => {
@@ -172,8 +284,16 @@ async function doRefreshAll(): Promise<boolean> {
     pinnedProvider.setRepoLoading(repo);
     try {
       const runStart = Date.now();
+      const workflowMap = await refreshWorkflows(api, repo);
       const runs = await api.listRuns(repo, settings.maxRunsPerRepo);
       const limitedRuns = runs.slice(0, settings.maxRunsPerRepo);
+      limitedRuns.forEach((run) => {
+        const workflowId = workflowIdFromPath(run.workflowPath);
+        const name = workflowId ? workflowMap?.get(workflowId) : undefined;
+        if (name) {
+          run.workflowName = name;
+        }
+      });
       workspaceProvider.updateRuns(repo, limitedRuns);
       pinnedProvider.updateRuns(repo, limitedRuns);
       lastRunsByRepo.set(repoKey(repo), limitedRuns);
@@ -181,6 +301,9 @@ async function doRefreshAll(): Promise<boolean> {
       if (limitedRuns.some((r) => isRunning(r.status))) {
         anyRunning = true;
       }
+      await runWithLimit(limitedRuns, 3, async (run) => {
+        await fetchJobsForRun(repo, run.id);
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       workspaceProvider.setRepoError(repo, message);
@@ -230,6 +353,10 @@ async function resolveRepos(api: GiteaApi): Promise<{ workspaceRepos: RepoRef[];
   return { workspaceRepos, pinnedRefs, pinnedKeys };
 }
 
+async function openBaseUrlSettings(): Promise<void> {
+  await vscode.commands.executeCommand('workbench.action.openSettings', '@giteaActions');
+}
+
 async function setTokenCommand(context: vscode.ExtensionContext): Promise<void> {
   const token = await promptForToken();
   if (!token) {
@@ -237,28 +364,54 @@ async function setTokenCommand(context: vscode.ExtensionContext): Promise<void> 
   }
   await storeToken(context.secrets, token);
   cachedToken = token;
-  vscode.window.showInformationMessage('Gitea token saved.');
+  settingsProvider.setTokenStatus(true);
+  showToast('Gitea token saved.');
   scheduleRefresh();
 }
 
 async function clearTokenCommand(context: vscode.ExtensionContext): Promise<void> {
+  const hadToken = !!cachedToken;
   await clearToken(context.secrets);
   cachedToken = undefined;
-  vscode.window.showInformationMessage('Gitea token cleared.');
+  settingsProvider.setTokenStatus(false);
   workspaceProvider.clear();
   pinnedProvider.clear();
-  updateStatusBar('Gitea: token cleared');
+  
+  // Set the config errors so the tree views show "Configure token" instead of "No repositories found"
+  const configErrors = await getConfigErrors();
+  if (configErrors.length > 0) {
+    workspaceProvider.setConfigErrors(configErrors);
+    pinnedProvider.setConfigErrors(configErrors);
+  }
+  
+  // Only show message and update status bar if we actually cleared a token
+  if (hadToken) {
+    updateStatusBar('Gitea: token cleared');
+    showToast('Gitea token cleared.');
+  } else {
+    // If there was no token, just update to the proper state immediately
+    const error = await getConfigError();
+    if (error) {
+      updateStatusBar('Gitea: not configured');
+    } else {
+      updateStatusBar();
+    }
+  }
 }
 
 async function testConnectionCommand(): Promise<void> {
+  const error = await getConfigError();
+  if (error) {
+    vscode.window.showWarningMessage(`${error} before testing.`);
+    return;
+  }
   const api = await ensureApi();
   if (!api) {
-    vscode.window.showWarningMessage('Set giteaActions.baseUrl and token before testing.');
     return;
   }
   try {
     const version = await api.testConnection();
-    vscode.window.showInformationMessage(`Connected to Gitea (version ${version}).`);
+    showToast(`Connected to Gitea (version ${version}).`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     vscode.window.showErrorMessage(`Connection failed: ${message}`);
@@ -271,12 +424,16 @@ async function manualRefresh(): Promise<void> {
 }
 
 async function viewJobLogs(node: { job: Job; repo: RepoRef; runId?: number | string; step?: Step }): Promise<void> {
-  const api = await ensureApi();
-  if (!api) {
-    vscode.window.showWarningMessage('Cannot fetch logs; configure base URL and token first.');
+  const error = await getConfigError();
+  if (error) {
+    vscode.window.showWarningMessage(`Cannot fetch logs; ${error.toLowerCase()} first.`);
     return;
   }
-  const runId = node.runId;
+  const api = await ensureApi();
+  if (!api) {
+    return;
+  }
+  const runId = node.runId ?? (node as { run?: { id?: number | string } }).run?.id;
   const jobId = node.job.id;
   const shouldStream = isJobActive(node.job.status);
   const uri = buildLogUri(node.repo, runId ?? 'run', jobId, node.step?.name ?? node.step?.id);
@@ -304,9 +461,7 @@ async function viewJobLogs(node: { job: Job; repo: RepoRef; runId?: number | str
 
 async function openInBrowser(node: ActionsNode): Promise<void> {
   let url: string | undefined;
-  if (node.type === 'repo') {
-    url = node.repo.htmlUrl;
-  } else if (node.type === 'run') {
+  if (node.type === 'run') {
     url = node.run.htmlUrl;
   } else if (node.type === 'job' || node.type === 'step') {
     url = node.job.htmlUrl;
@@ -324,22 +479,24 @@ async function pinRepo(context: vscode.ExtensionContext, repo: RepoRef): Promise
   }
   pinnedRepos = [...pinnedRepos, { owner: repo.owner, name: repo.name }];
   await savePinned(context.globalState, pinnedRepos);
-  vscode.window.showInformationMessage(`Pinned ${repo.owner}/${repo.name}.`);
+  showToast(`Pinned ${repo.owner}/${repo.name}.`);
   scheduleRefresh();
 }
 
 async function unpinRepo(context: vscode.ExtensionContext, repo: RepoRef): Promise<void> {
   pinnedRepos = pinnedRepos.filter((r) => !(r.owner === repo.owner && r.name === repo.name));
   await savePinned(context.globalState, pinnedRepos);
-  vscode.window.showInformationMessage(`Unpinned ${repo.owner}/${repo.name}.`);
+  showToast(`Unpinned ${repo.owner}/${repo.name}.`);
   scheduleRefresh();
 }
 
 async function handleExpand(element: ActionsNode): Promise<void> {
-  if (!element || element.type !== 'run') {
+  if (!element) {
     return;
   }
-  await fetchJobsForRun(element.repo, element.run.id);
+  if (element.type === 'run') {
+    await fetchJobsForRun(element.repo, element.run.id);
+  }
 }
 
 async function fetchJobsForRun(
@@ -351,10 +508,14 @@ async function fetchJobsForRun(
   if (inFlightJobFetch.has(key)) {
     return inFlightJobFetch.get(key);
   }
+  const error = await getConfigError();
+  if (error) {
+    workspaceProvider.setRunJobsError(repo, runId, error);
+    pinnedProvider.setRunJobsError(repo, runId, error);
+    return;
+  }
   const api = await ensureApi();
   if (!api) {
-    workspaceProvider.setRunJobsError(repo, runId, 'Configure baseUrl and token');
-    pinnedProvider.setRunJobsError(repo, runId, 'Configure baseUrl and token');
     return;
   }
   if (!options?.refreshOnly) {
@@ -366,8 +527,10 @@ async function fetchJobsForRun(
       logDebug(`Fetching jobs for ${repo.owner}/${repo.name} run ${runId} (limit=${settings.maxJobsPerRun}, timeout=${JOBS_TIMEOUT_MS}ms)`);
       const start = Date.now();
       const jobs = await api.listJobs(repo, runId, { limit: settings.maxJobsPerRun, timeoutMs: JOBS_TIMEOUT_MS });
+      const hydratedCount = await hydrateJobSteps(api, repo, runId, jobs);
       const elapsed = Date.now() - start;
-      logDebug(`Fetched ${jobs.length} jobs for ${repo.owner}/${repo.name} run ${runId} in ${elapsed}ms`);
+      const hydrationNote = hydratedCount ? ` (steps fetched for ${hydratedCount} job${hydratedCount === 1 ? '' : 's'})` : '';
+      logDebug(`Fetched ${jobs.length} jobs for ${repo.owner}/${repo.name} run ${runId} in ${elapsed}ms${hydrationNote}`);
       workspaceProvider.updateJobs(repo, runId, jobs);
       pinnedProvider.updateJobs(repo, runId, jobs);
       scheduleJobRefresh(repo, runId, jobs);
@@ -383,6 +546,34 @@ async function fetchJobsForRun(
   })();
   inFlightJobFetch.set(key, fetchPromise);
   return fetchPromise;
+}
+
+async function hydrateJobSteps(api: GiteaApi, repo: RepoRef, runId: number | string, jobs: Job[]): Promise<number> {
+  const missing = jobs.filter((job) => !job.steps || job.steps.length === 0);
+  if (!missing.length) {
+    return 0;
+  }
+  const hydrateStart = Date.now();
+  await runWithLimit(missing, 3, async (job) => {
+    const cacheKey = `${repo.owner}/${repo.name}#${job.id}`;
+    const cachedSteps = jobStepsCache.get(cacheKey);
+    if (cachedSteps?.length) {
+      job.steps = cachedSteps;
+      return;
+    }
+    try {
+      const detailed = await api.getJob(repo, job.id, { timeoutMs: JOBS_TIMEOUT_MS });
+      if (detailed.steps?.length) {
+        job.steps = detailed.steps;
+        jobStepsCache.set(cacheKey, detailed.steps);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logDebug(`Failed to fetch steps for job ${job.id} in ${repo.owner}/${repo.name} run ${runId}: ${message}`);
+    }
+  });
+  logDebug(`Hydrated steps for ${missing.length} job(s) in ${repo.owner}/${repo.name} run ${runId} in ${Date.now() - hydrateStart}ms`);
+  return missing.length;
 }
 
 function scheduleRefresh(): void {
@@ -504,6 +695,7 @@ async function startLogStream(
     if (runId !== undefined) {
       try {
         const jobs = await api.listJobs(repo, runId, { limit: settings.maxJobsPerRun, timeoutMs: JOBS_TIMEOUT_MS });
+        await hydrateJobSteps(api, repo, runId, jobs);
         workspaceProvider.updateJobs(repo, runId, jobs);
         pinnedProvider.updateJobs(repo, runId, jobs);
         scheduleJobRefresh(repo, runId, jobs);
@@ -540,4 +732,353 @@ function mergeRepos(a: RepoRef[], b: RepoRef[]): RepoRef[] {
     }
   }
   return result;
+}
+
+async function refreshWorkflows(api: GiteaApi, repo: RepoRef): Promise<Map<string, string> | undefined> {
+  const key = repoKey(repo);
+  if (workflowNameCache.has(key)) {
+    return workflowNameCache.get(key);
+  }
+  try {
+    const workflows = await api.listWorkflows(repo);
+    const map = new Map<string, string>();
+    workflows.forEach((wf) => {
+      const id = workflowIdFromPath(wf.id ?? wf.path);
+      if (id && wf.name) {
+        map.set(id, wf.name);
+      }
+    });
+    workflowNameCache.set(key, map);
+    return map;
+  } catch (err) {
+    logWarn(`Failed to fetch workflows for ${repo.owner}/${repo.name}: ${String(err)}`);
+    return undefined;
+  }
+}
+
+function workflowIdFromPath(path?: string): string | undefined {
+  if (!path) {
+    return undefined;
+  }
+  const beforeAt = path.split('@')[0] ?? path;
+  const parts = beforeAt.split('/');
+  const file = parts[parts.length - 1];
+  return file || undefined;
+}
+
+async function refreshSecretsForRepo(repo: RepoRef): Promise<void> {
+  const error = await getConfigError();
+  if (error) {
+    settingsProvider.setSecretsError(error);
+    return;
+  }
+  const api = await ensureApi();
+  if (!api) {
+    return;
+  }
+  
+  settingsProvider.setSecretsLoading();
+  try {
+    const secrets = await api.listSecrets(repo);
+    settingsProvider.setSecrets(secrets);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    settingsProvider.setSecretsError(message);
+    logWarn(`Failed to refresh secrets for ${repo.owner}/${repo.name}: ${message}`);
+  }
+}
+
+async function refreshVariablesForRepo(repo: RepoRef): Promise<void> {
+  const error = await getConfigError();
+  if (error) {
+    settingsProvider.setVariablesError(error);
+    return;
+  }
+  const api = await ensureApi();
+  if (!api) {
+    return;
+  }
+  
+  settingsProvider.setVariablesLoading();
+  try {
+    const variables = await api.listVariables(repo);
+    settingsProvider.setVariables(variables);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    settingsProvider.setVariablesError(message);
+    logWarn(`Failed to refresh variables for ${repo.owner}/${repo.name}: ${message}`);
+  }
+}
+
+async function refreshSecrets(node: SecretsRootNode): Promise<void> {
+  await refreshSecretsForRepo(node.repo);
+}
+
+async function refreshVariables(node: VariablesRootNode): Promise<void> {
+  await refreshVariablesForRepo(node.repo);
+}
+
+async function createSecret(node: SecretsRootNode): Promise<void> {
+  const error = await getConfigError();
+  if (error) {
+    vscode.window.showWarningMessage(`${error} before creating secrets.`);
+    return;
+  }
+  const api = await ensureApi();
+  if (!api) {
+    return;
+  }
+  
+  const name = await vscode.window.showInputBox({
+    prompt: 'Secret name',
+    placeHolder: 'SECRET_NAME',
+    validateInput: (value) => {
+      if (!value.trim()) {
+        return 'Secret name cannot be empty';
+      }
+      if (!/^[A-Z_][A-Z0-9_]*$/.test(value)) {
+        return 'Secret name should be uppercase letters, numbers, and underscores only';
+      }
+      return undefined;
+    }
+  });
+  
+  if (!name) {
+    return;
+  }
+  
+  const data = await vscode.window.showInputBox({
+    prompt: 'Secret value',
+    placeHolder: 'Enter secret value',
+    password: true,
+    ignoreFocusOut: true,
+    validateInput: (value) => (!value.trim() ? 'Secret value cannot be empty' : undefined)
+  });
+  
+  if (!data) {
+    return;
+  }
+  
+  const description = await vscode.window.showInputBox({
+    prompt: 'Description (optional)',
+    placeHolder: 'Optional description'
+  });
+  
+  try {
+    await api.createOrUpdateSecret(node.repo, name.trim(), data.trim(), description?.trim());
+    showToast(`Secret ${name} created successfully.`);
+    await refreshSecretsForRepo(node.repo);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    vscode.window.showErrorMessage(`Failed to create secret: ${message}`);
+    logError('Failed to create secret', error);
+  }
+}
+
+async function updateSecret(node: SecretNode): Promise<void> {
+  const error = await getConfigError();
+  if (error) {
+    vscode.window.showWarningMessage(`${error} before updating secrets.`);
+    return;
+  }
+  const api = await ensureApi();
+  if (!api) {
+    return;
+  }
+  
+  const data = await vscode.window.showInputBox({
+    prompt: 'New secret value',
+    placeHolder: 'Enter new secret value',
+    password: true,
+    ignoreFocusOut: true,
+    validateInput: (value) => (!value.trim() ? 'Secret value cannot be empty' : undefined)
+  });
+  
+  if (!data) {
+    return;
+  }
+  
+  const description = await vscode.window.showInputBox({
+    prompt: 'Description (optional)',
+    placeHolder: node.description || 'Optional description',
+    value: node.description
+  });
+  
+  try {
+    await api.createOrUpdateSecret(node.repo, node.name, data.trim(), description?.trim());
+    showToast(`Secret ${node.name} updated successfully.`);
+    await refreshSecretsForRepo(node.repo);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    vscode.window.showErrorMessage(`Failed to update secret: ${message}`);
+    logError('Failed to update secret', error);
+  }
+}
+
+async function deleteSecret(node: SecretNode): Promise<void> {
+  const confirmed = await vscode.window.showWarningMessage(
+    `Delete secret "${node.name}"? This action cannot be undone.`,
+    { modal: true },
+    'Delete'
+  );
+  
+  if (confirmed !== 'Delete') {
+    return;
+  }
+  
+  const error = await getConfigError();
+  if (error) {
+    vscode.window.showWarningMessage(`${error} before deleting secrets.`);
+    return;
+  }
+  const api = await ensureApi();
+  if (!api) {
+    return;
+  }
+  
+  try {
+    await api.deleteSecret(node.repo, node.name);
+    showToast(`Secret ${node.name} deleted successfully.`);
+    await refreshSecretsForRepo(node.repo);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    vscode.window.showErrorMessage(`Failed to delete secret: ${message}`);
+    logError('Failed to delete secret', error);
+  }
+}
+
+async function createVariable(node: VariablesRootNode): Promise<void> {
+  const error = await getConfigError();
+  if (error) {
+    vscode.window.showWarningMessage(`${error} before creating variables.`);
+    return;
+  }
+  const api = await ensureApi();
+  if (!api) {
+    return;
+  }
+  
+  const name = await vscode.window.showInputBox({
+    prompt: 'Variable name',
+    placeHolder: 'VARIABLE_NAME',
+    validateInput: (value) => {
+      if (!value.trim()) {
+        return 'Variable name cannot be empty';
+      }
+      return undefined;
+    }
+  });
+  
+  if (!name) {
+    return;
+  }
+  
+  const value = await vscode.window.showInputBox({
+    prompt: 'Variable value',
+    placeHolder: 'Enter variable value',
+    ignoreFocusOut: true,
+    validateInput: (value) => (!value.trim() ? 'Variable value cannot be empty' : undefined)
+  });
+  
+  if (!value) {
+    return;
+  }
+  
+  const description = await vscode.window.showInputBox({
+    prompt: 'Description (optional)',
+    placeHolder: 'Optional description'
+  });
+  
+  try {
+    await api.createVariable(node.repo, name.trim(), value.trim(), description?.trim());
+    showToast(`Variable ${name} created successfully.`);
+    await refreshVariablesForRepo(node.repo);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    vscode.window.showErrorMessage(`Failed to create variable: ${message}`);
+    logError('Failed to create variable', error);
+  }
+}
+
+async function updateVariable(node: VariableNode): Promise<void> {
+  const error = await getConfigError();
+  if (error) {
+    vscode.window.showWarningMessage(`${error} before updating variables.`);
+    return;
+  }
+  const api = await ensureApi();
+  if (!api) {
+    return;
+  }
+  
+  // Get current value from API
+  let currentValue = node.value;
+  if (!currentValue) {
+    try {
+      const variable = await api.getVariable(node.repo, node.name);
+      currentValue = variable.data;
+    } catch (error) {
+      logWarn(`Failed to fetch current variable value: ${String(error)}`);
+    }
+  }
+  
+  const value = await vscode.window.showInputBox({
+    prompt: 'New variable value',
+    placeHolder: 'Enter new variable value',
+    value: currentValue,
+    ignoreFocusOut: true,
+    validateInput: (value) => (!value.trim() ? 'Variable value cannot be empty' : undefined)
+  });
+  
+  if (!value) {
+    return;
+  }
+  
+  const description = await vscode.window.showInputBox({
+    prompt: 'Description (optional)',
+    placeHolder: node.description || 'Optional description',
+    value: node.description
+  });
+  
+  try {
+    await api.updateVariable(node.repo, node.name, value.trim(), description?.trim());
+    showToast(`Variable ${node.name} updated successfully.`);
+    await refreshVariablesForRepo(node.repo);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    vscode.window.showErrorMessage(`Failed to update variable: ${message}`);
+    logError('Failed to update variable', error);
+  }
+}
+
+async function deleteVariable(node: VariableNode): Promise<void> {
+  const confirmed = await vscode.window.showWarningMessage(
+    `Delete variable "${node.name}"? This action cannot be undone.`,
+    { modal: true },
+    'Delete'
+  );
+  
+  if (confirmed !== 'Delete') {
+    return;
+  }
+  
+  const error = await getConfigError();
+  if (error) {
+    vscode.window.showWarningMessage(`${error} before deleting variables.`);
+    return;
+  }
+  const api = await ensureApi();
+  if (!api) {
+    return;
+  }
+  
+  try {
+    await api.deleteVariable(node.repo, node.name);
+    showToast(`Variable ${node.name} deleted successfully.`);
+    await refreshVariablesForRepo(node.repo);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    vscode.window.showErrorMessage(`Failed to delete variable: ${message}`);
+    logError('Failed to delete variable', error);
+  }
 }

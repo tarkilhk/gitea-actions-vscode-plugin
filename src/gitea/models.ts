@@ -8,6 +8,11 @@ export type RepoRef = {
 export type WorkflowRun = {
   id: number | string;
   name: string;
+  workflowName?: string;
+  displayTitle?: string;
+  workflowPath?: string;
+  actor?: string;
+  commitMessage?: string;
   runNumber?: number;
   runAttempt?: number;
   event?: string;

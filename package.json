@@ -95,12 +95,17 @@
         {
           "type": "tree",
           "id": "giteaActions.runs",
-          "name": "Current Branch"
+          "name": "Current Branch Runs"
         },
         {
           "type": "tree",
           "id": "giteaActions.runsPinned",
           "name": "Workflows"
+        },
+        {
+          "type": "tree",
+          "id": "giteaActions.settings",
+          "name": "Settings"
         }
       ]
     },
@@ -112,11 +117,13 @@
       },
       {
         "command": "giteaActions.setToken",
-        "title": "Gitea Actions: Set Token"
+        "title": "Set",
+        "icon": "$(pencil)"
       },
       {
         "command": "giteaActions.clearToken",
-        "title": "Gitea Actions: Clear Token"
+        "title": "Clear",
+        "icon": "$(trash)"
       },
       {
         "command": "giteaActions.testConnection",
@@ -139,6 +146,50 @@
       {
         "command": "giteaActions.unpinRepo",
         "title": "Gitea Actions: Unpin Repository"
+      },
+      {
+        "command": "giteaActions.refreshSecrets",
+        "title": "Refresh Secrets",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "giteaActions.refreshVariables",
+        "title": "Refresh Variables",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "giteaActions.createSecret",
+        "title": "Add Secret",
+        "icon": "$(add)"
+      },
+      {
+        "command": "giteaActions.updateSecret",
+        "title": "Update Secret",
+        "icon": "$(pencil)"
+      },
+      {
+        "command": "giteaActions.deleteSecret",
+        "title": "Delete Secret",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "giteaActions.createVariable",
+        "title": "Add Variable",
+        "icon": "$(add)"
+      },
+      {
+        "command": "giteaActions.updateVariable",
+        "title": "Update Variable",
+        "icon": "$(pencil)"
+      },
+      {
+        "command": "giteaActions.deleteVariable",
+        "title": "Delete Variable",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "giteaActions.openBaseUrlSettings",
+        "title": "Gitea Actions: Open Base URL Settings"
       }
     ],
     "menus": {
@@ -174,6 +225,56 @@
           "command": "giteaActions.unpinRepo",
           "when": "(view == giteaActions.runs || view == giteaActions.runsPinned) && viewItem == giteaRepoPinned",
           "group": "inline"
+        },
+        {
+          "command": "giteaActions.refreshSecrets",
+          "when": "view == giteaActions.settings && viewItem == giteaSecretsRoot",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.createSecret",
+          "when": "view == giteaActions.settings && viewItem == giteaSecretsRoot",
+          "group": "inline@1"
+        },
+        {
+          "command": "giteaActions.updateSecret",
+          "when": "view == giteaActions.settings && viewItem == giteaSecret",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.deleteSecret",
+          "when": "view == giteaActions.settings && viewItem == giteaSecret",
+          "group": "inline@1"
+        },
+        {
+          "command": "giteaActions.refreshVariables",
+          "when": "view == giteaActions.settings && viewItem == giteaVariablesRoot",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.createVariable",
+          "when": "view == giteaActions.settings && viewItem == giteaVariablesRoot",
+          "group": "inline@1"
+        },
+        {
+          "command": "giteaActions.updateVariable",
+          "when": "view == giteaActions.settings && viewItem == giteaVariable",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.deleteVariable",
+          "when": "view == giteaActions.settings && viewItem == giteaVariable",
+          "group": "inline@1"
+        },
+        {
+          "command": "giteaActions.setToken",
+          "when": "view == giteaActions.settings && viewItem == giteaToken",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.clearToken",
+          "when": "view == giteaActions.settings && viewItem == giteaToken",
+          "group": "inline@1"
         }
       ]
     }
