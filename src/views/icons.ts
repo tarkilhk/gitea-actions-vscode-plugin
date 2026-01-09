@@ -1,10 +1,16 @@
 import * as vscode from 'vscode';
 import { WorkflowRun, Job, Step } from '../gitea/models';
-import { statusIconForJob, statusIconForRun, statusIconForStep } from '../util/status';
+import { statusIconForJob, statusIconForRun, statusIconForStep, StatusIcon } from '../util/status';
 
-function themeIconFromToken(token: string): vscode.ThemeIcon {
-  const match = token.match(/^\$\((.+)\)$/);
-  return new vscode.ThemeIcon(match ? match[1] : token);
+type IconToken = string | StatusIcon;
+
+function themeIconFromToken(token: IconToken): vscode.ThemeIcon {
+  if (typeof token === 'string') {
+    const match = token.match(/^\$\((.+)\)$/);
+    return new vscode.ThemeIcon(match ? match[1] : token);
+  }
+  const color = token.color ? new vscode.ThemeColor(token.color) : undefined;
+  return new vscode.ThemeIcon(token.id, color);
 }
 
 export function iconForRun(run: WorkflowRun): vscode.ThemeIcon {

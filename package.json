@@ -17,17 +17,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished",
-    "onView:giteaActions.runs",
-    "onView:giteaActions.runsPinned",
-    "onCommand:giteaActions.refresh",
-    "onCommand:giteaActions.setToken",
-    "onCommand:giteaActions.clearToken",
-    "onCommand:giteaActions.testConnection",
-    "onCommand:giteaActions.viewJobLogs",
-    "onCommand:giteaActions.openInBrowser",
-    "onCommand:giteaActions.pinRepo",
-    "onCommand:giteaActions.unpinRepo"
+    "onStartupFinished"
   ],
   "main": "./dist/extension.js",
   "scripts": {
@@ -105,12 +95,12 @@
         {
           "type": "tree",
           "id": "giteaActions.runs",
-          "name": "Runs (Workspace)"
+          "name": "Current Branch"
         },
         {
           "type": "tree",
           "id": "giteaActions.runsPinned",
-          "name": "Runs (Pinned)"
+          "name": "Workflows"
         }
       ]
     },
@@ -134,11 +124,13 @@
       },
       {
         "command": "giteaActions.viewJobLogs",
-        "title": "View Logs"
+        "title": "View Logs",
+        "icon": "$(list-unordered)"
       },
       {
         "command": "giteaActions.openInBrowser",
-        "title": "Open in Browser"
+        "title": "Open in Browser",
+        "icon": "$(globe)"
       },
       {
         "command": "giteaActions.pinRepo",
