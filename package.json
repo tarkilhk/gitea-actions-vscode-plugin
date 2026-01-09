@@ -3,7 +3,7 @@
   "displayName": "Gitea Actions",
   "description": "View and inspect Gitea Actions workflow runs directly from VS Code / Cursor.",
   "icon": "resources/gitea-actions-icon.png",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "publisher": "tarkil",
   "license": "MIT",
   "repository": {
