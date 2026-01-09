@@ -22,6 +22,16 @@ export type WorkflowRun = {
   htmlUrl?: string;
 };
 
+export type Step = {
+  id?: number | string;
+  name: string;
+  status: 'queued' | 'running' | 'completed' | 'unknown';
+  conclusion?: 'success' | 'failure' | 'cancelled' | 'skipped' | 'unknown';
+  startedAt?: string;
+  completedAt?: string;
+  number?: number;
+};
+
 export type Job = {
   id: number | string;
   name: string;
@@ -30,6 +40,7 @@ export type Job = {
   startedAt?: string;
   completedAt?: string;
   htmlUrl?: string;
+  steps?: Step[];
 };
 
 export type PinnedRepo = {

@@ -5,8 +5,9 @@ VS Code / Cursor extension that lists Gitea Actions runs and jobs from your Gite
 ## Features (v1)
 - Configure base URL, store PAT in SecretStorage, and test the connection.
 - Three discovery modes: workspace git remotes, pinned repositories, or all accessible repos via API.
-- Two separate tree views: **Runs (Workspace)** and **Runs (Pinned)**, showing repos → runs → jobs with status icons and timestamps.
-- Expand runs to load jobs on-demand; click jobs to view logs in an editor tab.
+- Two separate tree views: **Runs (Workspace)** and **Runs (Pinned)**, showing repos > runs > jobs with status icons and timestamps.
+- Job steps appear under each job with live status (spinner while running) and quick access to logs.
+- Expand runs to load jobs on-demand; click jobs or steps to view logs in an editor tab (running items stream live).
 - Open repo/run/job in browser via context menu.
 - Manual refresh plus adaptive polling (faster when runs are active, slower when idle).
 - Status bar summary showing running and failed workflow counts.

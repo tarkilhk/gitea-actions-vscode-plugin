@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { Job, RepoRef, WorkflowRun } from '../gitea/models';
-import { iconForJob, iconForRun, repoIcon, errorIcon, infoIcon } from './icons';
+import { Job, RepoRef, WorkflowRun, Step } from '../gitea/models';
+import { iconForJob, iconForRun, iconForStep, repoIcon, errorIcon, infoIcon } from './icons';
 import { formatAgo, formatDateTime, formatDuration } from '../util/time';
 
 export type RepoNode = {
@@ -25,6 +25,14 @@ export type JobNode = {
   job: Job;
 };
 
+export type StepNode = {
+  type: 'step';
+  repo: RepoRef;
+  runId: number | string;
+  job: Job;
+  step: Step;
+};
+
 export type MessageNode = {
   type: 'message';
   repo?: RepoRef;
@@ -32,7 +40,7 @@ export type MessageNode = {
   severity: 'info' | 'error';
 };
 
-export type ActionsNode = RepoNode | RunNode | JobNode | MessageNode;
+export type ActionsNode = RepoNode | RunNode | JobNode | StepNode | MessageNode;
 
 function shortSha(sha?: string): string {
   return sha ? sha.substring(0, 7) : '';
@@ -130,6 +138,29 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
       if (job.htmlUrl) {
         item.resourceUri = vscode.Uri.parse(job.htmlUrl);
       }
+      return item;
+    }
+    case 'step': {
+      const { step, job } = node;
+      const duration = formatDuration(step.startedAt, step.completedAt);
+      const label = step.name || 'Step';
+      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+      item.id = `step-${node.runId}-${job.id}-${step.id ?? step.number ?? step.name}`;
+      item.iconPath = iconForStep(step);
+      item.description = duration || undefined;
+      item.tooltip = [
+        step.name,
+        step.startedAt ? `Started: ${formatDateTime(step.startedAt)}` : '',
+        step.completedAt ? `Completed: ${formatDateTime(step.completedAt)}` : ''
+      ]
+        .filter(Boolean)
+        .join('\n');
+      item.contextValue = 'giteaStep';
+      item.command = {
+        command: 'giteaActions.viewJobLogs',
+        title: 'View Logs',
+        arguments: [node]
+      };
       return item;
     }
     case 'message': {

@@ -1,5 +1,5 @@
 import { GiteaClient } from './client';
-import { Job, RepoRef, WorkflowRun } from './models';
+import { Job, RepoRef, WorkflowRun, Step } from './models';
 import { normalizeConclusion, normalizeStatus } from '../util/status';
 
 function pickArray<T = unknown>(payload: any, fallback: T[] = []): T[] {
@@ -36,6 +36,20 @@ function mapRun(repo: RepoRef, raw: any): WorkflowRun {
   };
 }
 
+function mapStep(raw: any): Step {
+  const status = normalizeStatus(raw.status);
+  const conclusion = normalizeConclusion(raw.conclusion);
+  return {
+    id: raw.id ?? raw.number ?? raw.step_id,
+    name: raw.name ?? raw.title ?? 'Step',
+    status,
+    conclusion,
+    startedAt: raw.started_at ?? raw.start_time ?? raw.startedAt,
+    completedAt: raw.completed_at ?? raw.completedAt ?? raw.completed,
+    number: raw.number ?? raw.step_number
+  };
+}
+
 function mapJob(raw: any): Job {
   const status = normalizeStatus(raw.status);
   const conclusion = normalizeConclusion(raw.conclusion);
@@ -46,7 +60,8 @@ function mapJob(raw: any): Job {
     conclusion,
     startedAt: raw.started_at ?? raw.start_time ?? raw.startedAt,
     completedAt: raw.completed_at ?? raw.completed ?? raw.completedAt,
-    htmlUrl: raw.html_url ?? raw.url ?? raw.web_url
+    htmlUrl: raw.html_url ?? raw.url ?? raw.web_url,
+    steps: Array.isArray(raw.steps) ? raw.steps.map((step: any) => mapStep(step)) : undefined
   };
 }
 

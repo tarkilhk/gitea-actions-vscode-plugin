@@ -6,7 +6,7 @@ on:
   workflow_dispatch:  # Allows manual triggering
 
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -28,7 +28,57 @@ jobs:
         run: npm run package
         continue-on-error: false
 
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-vsix
+          path: '*.vsix'
+          retention-days: 1
+
+  publish-vscode:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download VSIX artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: extension-vsix
+          path: .
+
+      - name: Find VSIX file
+        id: find-vsix
+        run: |
+          VSIX_FILE=$(ls *.vsix | head -n 1)
+          echo "vsix-file=$VSIX_FILE" >> $GITHUB_OUTPUT
+
       - name: Publish to VS Code Marketplace
-        run: npx @vscode/vsce publish -p ${{ secrets.VSCE_PAT }}
+        run: npx @vscode/vsce publish "${{ steps.find-vsix.outputs.vsix-file }}" -p ${{ secrets.VSCE_PAT }}
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+  publish-openvsx:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download VSIX artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: extension-vsix
+          path: .
+
+      - name: Find VSIX file
+        id: find-vsix
+        run: |
+          VSIX_FILE=$(ls *.vsix | head -n 1)
+          echo "vsix-file=$VSIX_FILE" >> $GITHUB_OUTPUT
+
+      - name: Publish to Open VSX Registry
+        run: npx ovsx publish "${{ steps.find-vsix.outputs.vsix-file }}" -p ${{ secrets.OVSX_PAT }}
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}

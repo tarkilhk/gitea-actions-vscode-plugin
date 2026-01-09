@@ -136,6 +136,27 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       }));
     }
 
+    if (element.type === 'job') {
+      const steps = element.job.steps ?? [];
+      if (!steps.length) {
+        return [
+          {
+            type: 'message',
+            repo: element.repo,
+            message: 'No steps reported',
+            severity: 'info'
+          } satisfies MessageNode
+        ];
+      }
+      return steps.map((step) => ({
+        type: 'step',
+        repo: element.repo,
+        runId: element.runId,
+        job: element.job,
+        step
+      }));
+    }
+
     return [];
   }
 
