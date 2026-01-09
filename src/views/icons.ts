@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { WorkflowRun, Job, Step } from '../gitea/models';
-import { statusIconForJob, statusIconForRun, statusIconForStep, StatusIcon } from '../util/status';
+import { statusIcon, StatusIcon, HasStatusConclusion } from '../util/status';
 
 type IconToken = string | StatusIcon;
 
@@ -13,16 +13,23 @@ function themeIconFromToken(token: IconToken): vscode.ThemeIcon {
   return new vscode.ThemeIcon(token.id, color);
 }
 
+/**
+ * Creates a ThemeIcon for any item with status/conclusion (Run, Job, Step).
+ */
+function iconForStatusItem(item: HasStatusConclusion): vscode.ThemeIcon {
+  return themeIconFromToken(statusIcon(item));
+}
+
 export function iconForRun(run: WorkflowRun): vscode.ThemeIcon {
-  return themeIconFromToken(statusIconForRun(run));
+  return iconForStatusItem(run);
 }
 
 export function iconForJob(job: Job): vscode.ThemeIcon {
-  return themeIconFromToken(statusIconForJob(job));
+  return iconForStatusItem(job);
 }
 
 export function iconForStep(step: Step): vscode.ThemeIcon {
-  return themeIconFromToken(statusIconForStep(step));
+  return iconForStatusItem(step);
 }
 
 export const repoIcon = new vscode.ThemeIcon('repo');

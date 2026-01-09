@@ -85,7 +85,8 @@ async function getGitRemotes(path: string): Promise<string[]> {
   }
 }
 
-function parseRemote(remoteLine: string): { host: string; owner: string; name: string } | undefined {
+// Exported for testing
+export function parseRemote(remoteLine: string): { host: string; owner: string; name: string } | undefined {
   // Examples:
   // origin  https://host/owner/repo.git (fetch)
   // origin  ssh://git@host:2222/owner/repo.git (push)
@@ -122,7 +123,8 @@ function parseRemote(remoteLine: string): { host: string; owner: string; name: s
   return undefined;
 }
 
-function hostsMatch(candidate: string, target: string): boolean {
+// Exported for testing
+export function hostsMatch(candidate: string, target: string): boolean {
   if (!candidate || !target) {
     return false;
   }

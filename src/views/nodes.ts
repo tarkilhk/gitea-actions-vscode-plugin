@@ -9,8 +9,7 @@ import {
   infoIcon,
   secretIcon,
   variableIcon,
-  settingsIcon,
-  folderIcon
+  settingsIcon
 } from './icons';
 import { formatAgo, formatDateTime, formatDuration } from '../util/time';
 
