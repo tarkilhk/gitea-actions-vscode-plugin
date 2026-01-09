@@ -1,3 +1,13 @@
+## [1.4.0] - 2026-01-09
+
+### ✨ Added
+
+- Add Github actions to build / deploy extension to marketplace on release (dbc8f26)
+
+### 📝 Changed
+
+- Remove package-lock.json from .gitignore (9fef59c)
+
 ## [1.3.0] - 2026-01-09
 
 - Maintenance release
