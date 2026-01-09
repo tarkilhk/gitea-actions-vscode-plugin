@@ -1,3 +1,9 @@
+## [1.5.0] - 2026-01-09
+
+### ✨ Added
+
+- enhance job and step logging in Gitea Actions extension (15c40b2)
+
 ## [1.4.1] - 2026-01-09
 
 - Maintenance release
