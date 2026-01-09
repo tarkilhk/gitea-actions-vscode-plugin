@@ -3,12 +3,12 @@
   "displayName": "Gitea Actions",
   "description": "View and inspect Gitea Actions workflow runs directly from VS Code / Cursor.",
   "icon": "resources/gitea-actions-icon.png",
-  "version": "1.0.0",
-  "publisher": "local",
+  "version": "1.1.0",
+  "publisher": "tarkil",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://example.com/placeholder.git"
+    "url": "https://github.com/tarkilhk/gitea-actions-vscode-plugin"
   },
   "engines": {
     "vscode": "^1.105.0"
@@ -34,7 +34,11 @@
     "compile": "tsc -p .",
     "watch": "tsc -watch -p .",
     "lint": "eslint . --ext .ts",
-    "package": "npm run compile && npx @vscode/vsce package"
+    "package": "npm run compile && npx @vscode/vsce package",
+    "release": "node scripts/release.js",
+    "release:patch": "node scripts/release.js patch",
+    "release:minor": "node scripts/release.js minor",
+    "release:major": "node scripts/release.js major"
   },
   "contributes": {
     "configuration": {
