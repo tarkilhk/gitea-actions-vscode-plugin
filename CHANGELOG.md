@@ -1,3 +1,9 @@
+## [1.6.0] - 2026-01-09
+
+### ✨ Added
+
+- add secrets and variables management to Gitea Actions extension (abf2b64)
+
 ## [1.5.0] - 2026-01-09
 
 ### ✨ Added
