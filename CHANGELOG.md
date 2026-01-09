@@ -1,3 +1,9 @@
+## [2.0.0] - 2026-01-09
+
+### ✨ Added
+
+- - Added a changelog file to document notable changes following the Keep a Changelog format. - Updated package.json and package-lock.json to reflect the new version 1.6.0. - Enhanced dependencies for testing and coverage, including Vitest and related packages. - Removed outdated swagger files and cache utility to streamline the project structure. (dbe88bf)
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
