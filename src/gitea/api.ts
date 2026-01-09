@@ -2,66 +2,71 @@ import { GiteaClient } from './client';
 import { Job, RepoRef, WorkflowRun, Step } from './models';
 import { normalizeConclusion, normalizeStatus } from '../util/status';
 
-function pickArray<T = unknown>(payload: any, fallback: T[] = []): T[] {
+function pickArray<T = unknown>(payload: unknown, fallback: T[] = []): T[] {
   if (Array.isArray(payload)) {
-    return payload;
+    return payload as T[];
   }
-  if (Array.isArray(payload?.data)) {
-    return payload.data;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  const obj = payload as { data?: unknown[]; workflow_runs?: unknown[] };
+  if (Array.isArray(obj?.data)) {
+    return obj.data as T[];
   }
-  if (Array.isArray(payload?.workflow_runs)) {
-    return payload.workflow_runs;
+  if (Array.isArray(obj?.workflow_runs)) {
+    return obj.workflow_runs as T[];
   }
   return fallback;
 }
 
-function mapRun(repo: RepoRef, raw: any): WorkflowRun {
-  const status = normalizeStatus(raw.status);
-  const conclusion = normalizeConclusion(raw.conclusion);
+function mapRun(repo: RepoRef, raw: unknown): WorkflowRun {
+  const r = raw as Record<string, unknown>;
+  const status = normalizeStatus(r.status as string | null | undefined);
+  const conclusion = normalizeConclusion(r.conclusion as string | null | undefined);
   return {
-    id: raw.id ?? raw.run_id ?? raw.workflow_id ?? String(Math.random()),
-    name: raw.display_title ?? raw.title ?? raw.name ?? raw.workflow_name ?? `${repo.owner}/${repo.name}`,
-    runNumber: raw.run_number ?? raw.runNumber,
-    runAttempt: raw.run_attempt ?? raw.runAttempt,
-    event: raw.event,
-    branch: raw.head_branch ?? raw.branch ?? raw.ref,
-    sha: raw.head_sha ?? raw.sha ?? raw.commit,
+    id: (r.id ?? r.run_id ?? r.workflow_id ?? String(Math.random())) as string | number,
+    name: (r.display_title ?? r.title ?? r.name ?? r.workflow_name ?? `${repo.owner}/${repo.name}`) as string,
+    runNumber: (r.run_number ?? r.runNumber) as number | undefined,
+    runAttempt: (r.run_attempt ?? r.runAttempt) as number | undefined,
+    event: r.event as string | undefined,
+    branch: (r.head_branch ?? r.branch ?? r.ref) as string | undefined,
+    sha: (r.head_sha ?? r.sha ?? r.commit) as string | undefined,
     status,
     conclusion,
-    createdAt: raw.created_at ?? raw.created ?? raw.createdAt,
-    updatedAt: raw.updated_at ?? raw.updated ?? raw.updatedAt,
-    startedAt: raw.started_at ?? raw.startedAt,
-    completedAt: raw.completed_at ?? raw.completedAt,
-    htmlUrl: raw.html_url ?? raw.url ?? raw.web_url
+    createdAt: (r.created_at ?? r.created ?? r.createdAt) as string | undefined,
+    updatedAt: (r.updated_at ?? r.updated ?? r.updatedAt) as string | undefined,
+    startedAt: (r.started_at ?? r.startedAt) as string | undefined,
+    completedAt: (r.completed_at ?? r.completedAt) as string | undefined,
+    htmlUrl: (r.html_url ?? r.url ?? r.web_url) as string | undefined
   };
 }
 
-function mapStep(raw: any): Step {
-  const status = normalizeStatus(raw.status);
-  const conclusion = normalizeConclusion(raw.conclusion);
+function mapStep(raw: unknown): Step {
+  const r = raw as Record<string, unknown>;
+  const status = normalizeStatus(r.status as string | null | undefined);
+  const conclusion = normalizeConclusion(r.conclusion as string | null | undefined);
   return {
-    id: raw.id ?? raw.number ?? raw.step_id,
-    name: raw.name ?? raw.title ?? 'Step',
+    id: (r.id ?? r.number ?? r.step_id) as string | number | undefined,
+    name: (r.name ?? r.title ?? 'Step') as string,
     status,
     conclusion,
-    startedAt: raw.started_at ?? raw.start_time ?? raw.startedAt,
-    completedAt: raw.completed_at ?? raw.completedAt ?? raw.completed,
-    number: raw.number ?? raw.step_number
+    startedAt: (r.started_at ?? r.start_time ?? r.startedAt) as string | undefined,
+    completedAt: (r.completed_at ?? r.completedAt ?? r.completed) as string | undefined,
+    number: (r.number ?? r.step_number) as number | undefined
   };
 }
 
-function mapJob(raw: any): Job {
-  const status = normalizeStatus(raw.status);
-  const conclusion = normalizeConclusion(raw.conclusion);
+function mapJob(raw: unknown): Job {
+  const r = raw as Record<string, unknown>;
+  const status = normalizeStatus(r.status as string | null | undefined);
+  const conclusion = normalizeConclusion(r.conclusion as string | null | undefined);
   return {
-    id: raw.id ?? raw.job_id ?? String(Math.random()),
-    name: raw.name ?? raw.title ?? 'Job',
+    id: (r.id ?? r.job_id ?? String(Math.random())) as string | number,
+    name: (r.name ?? r.title ?? 'Job') as string,
     status,
     conclusion,
-    startedAt: raw.started_at ?? raw.start_time ?? raw.startedAt,
-    completedAt: raw.completed_at ?? raw.completed ?? raw.completedAt,
-    htmlUrl: raw.html_url ?? raw.url ?? raw.web_url,
-    steps: Array.isArray(raw.steps) ? raw.steps.map((step: any) => mapStep(step)) : undefined
+    startedAt: (r.started_at ?? r.start_time ?? r.startedAt) as string | undefined,
+    completedAt: (r.completed_at ?? r.completed ?? r.completedAt) as string | undefined,
+    htmlUrl: (r.html_url ?? r.url ?? r.web_url) as string | undefined,
+    steps: Array.isArray(r.steps) ? (r.steps as unknown[]).map((step) => mapStep(step)) : undefined
   };
 }
 
@@ -74,14 +79,21 @@ export class GiteaApi {
   }
 
   async listAccessibleRepos(limit = 50): Promise<{ owner: string; name: string; htmlUrl?: string }[]> {
-    const payload = await this.client.getJson<any>(`/api/v1/user/repos?limit=${limit}`);
-    const repos = pickArray<any>(payload, payload.repos ?? []);
+    const payload = await this.client.getJson<unknown>(`/api/v1/user/repos?limit=${limit}`);
+    const repos = pickArray<unknown>(payload, (payload as { repos?: unknown[] })?.repos ?? []);
     return repos
-      .map((repo) => ({
-        owner: repo.owner?.login ?? repo.owner?.username ?? repo.owner ?? repo.namespace,
-        name: repo.name,
-        htmlUrl: repo.html_url ?? repo.clone_url ?? repo.ssh_url
-      }))
+      .map((repo) => {
+        const r = repo as Record<string, unknown>;
+        const owner = (r.owner as { login?: string; username?: string } | undefined)?.login ?? 
+                     (r.owner as { login?: string; username?: string } | undefined)?.username ?? 
+                     (r.owner as string | undefined) ?? 
+                     (r.namespace as string | undefined);
+        return {
+          owner: owner ?? '',
+          name: (r.name as string | undefined) ?? '',
+          htmlUrl: (r.html_url ?? r.clone_url ?? r.ssh_url) as string | undefined
+        };
+      })
       .filter((r) => r.owner && r.name);
   }
 
@@ -89,8 +101,8 @@ export class GiteaApi {
     const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/runs?limit=${encodeURIComponent(
       limit
     )}`;
-    const payload = await this.client.getJson<any>(path);
-    const runs = pickArray<any>(payload, []);
+    const payload = await this.client.getJson<unknown>(path);
+    const runs = pickArray<unknown>(payload, []);
     return runs.map((run) => mapRun(repo, run));
   }
 
@@ -101,8 +113,8 @@ export class GiteaApi {
   ): Promise<Job[]> {
     const qp = options?.limit && Number.isFinite(options.limit) ? `?limit=${encodeURIComponent(options.limit)}` : '';
     const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/runs/${runId}/jobs${qp}`;
-    const payload = await this.client.getJson<any>(path, undefined, options?.timeoutMs);
-    const jobs = pickArray<any>(payload, payload.jobs ?? []);
+    const payload = await this.client.getJson<unknown>(path, undefined, options?.timeoutMs);
+    const jobs = pickArray<unknown>(payload, (payload as { jobs?: unknown[] })?.jobs ?? []);
     return jobs.map((job) => mapJob(job));
   }
 

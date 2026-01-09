@@ -271,7 +271,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       this.onDidChangeTreeDataEmitter.fire();
       return;
     }
-    if ('type' in (node as any)) {
+    if ('type' in node) {
       this.onDidChangeTreeDataEmitter.fire(node as ActionsNode);
     } else {
       const repo = node as RepoRef;

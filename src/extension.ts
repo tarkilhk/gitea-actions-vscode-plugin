@@ -5,6 +5,7 @@ import { GiteaClient } from './gitea/client';
 import { GiteaApi } from './gitea/api';
 import { RepoRef, WorkflowRun, PinnedRepo, Job, Step } from './gitea/models';
 import { ActionsTreeProvider } from './views/actionsTreeProvider';
+import { ActionsNode } from './views/nodes';
 import { registerCommands } from './controllers/commands';
 import { RefreshController } from './controllers/refreshController';
 import { discoverWorkspaceRepos, loadPinned, savePinned, buildPinnedRepoRefs } from './gitea/discovery';
@@ -16,10 +17,10 @@ let cachedToken: string | undefined;
 let secretStorage: vscode.SecretStorage;
 const workspaceProvider = new ActionsTreeProvider();
 const pinnedProvider = new ActionsTreeProvider();
-let workspaceTree: vscode.TreeView<any>;
-let pinnedTree: vscode.TreeView<any>;
+let workspaceTree: vscode.TreeView<ActionsNode>;
+let pinnedTree: vscode.TreeView<ActionsNode>;
 let refreshController: RefreshController | undefined;
-let lastRunsByRepo = new Map<string, WorkflowRun[]>();
+const lastRunsByRepo = new Map<string, WorkflowRun[]>();
 let statusBarItem: vscode.StatusBarItem;
 let pinnedRepos: PinnedRepo[] = [];
 let refreshInFlight: Promise<boolean> | undefined;
@@ -275,7 +276,7 @@ async function viewJobLogs(node: { job: Job; repo: RepoRef; runId?: number | str
     vscode.window.showWarningMessage('Cannot fetch logs; configure base URL and token first.');
     return;
   }
-  const runId = node.runId ?? (node as any)?.run?.id;
+  const runId = node.runId;
   const jobId = node.job.id;
   const shouldStream = isJobActive(node.job.status);
   const uri = buildLogUri(node.repo, runId ?? 'run', jobId, node.step?.name ?? node.step?.id);
@@ -301,13 +302,13 @@ async function viewJobLogs(node: { job: Job; repo: RepoRef; runId?: number | str
   }
 }
 
-async function openInBrowser(node: any): Promise<void> {
+async function openInBrowser(node: ActionsNode): Promise<void> {
   let url: string | undefined;
-  if (node?.repo?.htmlUrl && node.type === 'repo') {
+  if (node.type === 'repo') {
     url = node.repo.htmlUrl;
-  } else if (node?.run?.htmlUrl) {
+  } else if (node.type === 'run') {
     url = node.run.htmlUrl;
-  } else if (node?.job?.htmlUrl) {
+  } else if (node.type === 'job' || node.type === 'step') {
     url = node.job.htmlUrl;
   }
   if (!url) {
@@ -334,7 +335,7 @@ async function unpinRepo(context: vscode.ExtensionContext, repo: RepoRef): Promi
   scheduleRefresh();
 }
 
-async function handleExpand(element: any): Promise<void> {
+async function handleExpand(element: ActionsNode): Promise<void> {
   if (!element || element.type !== 'run') {
     return;
   }
