@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ActionsNode, MessageNode, RepoNode, RunNode, JobNode, toTreeItem } from './nodes';
+import { ActionsNode, MessageNode, RunNode, WorkflowGroupNode, JobNode, toTreeItem } from './nodes';
 import { RepoRef, WorkflowRun, Job } from '../gitea/models';
 
 type RepoKey = string;
@@ -20,11 +20,16 @@ type JobCache = {
   error?: string;
 };
 
+type ProviderMode = 'runs' | 'workflows';
+
 export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode> {
   private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<ActionsNode | undefined | null | void>();
   readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
 
   private readonly repos = new Map<RepoKey, RepoState>();
+  private configErrors: Array<{ message: string; action: 'configureBaseUrl' | 'setToken' }> = [];
+
+  constructor(private readonly mode: ProviderMode = 'runs') {}
 
   getTreeItem(element: ActionsNode): vscode.TreeItem {
     return toTreeItem(element);
@@ -33,51 +38,68 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
   getChildren(element?: ActionsNode): vscode.ProviderResult<ActionsNode[]> {
     if (!element) {
       if (!this.repos.size) {
+        if (this.configErrors.length > 0) {
+          // If configuration is missing, show separate messages for each missing config
+          return this.configErrors.map((error): MessageNode => ({
+            type: 'message',
+            message: error.message,
+            severity: 'info',
+            action: error.action
+          }));
+        } else {
+          // If configured but no repos found, mention opening a repo
+          const message: MessageNode = {
+            type: 'message',
+            message: 'No repositories found. Open a Gitea repository to view runs.',
+            severity: 'info'
+          };
+          return [message];
+        }
+      }
+      const errored = Array.from(this.repos.values()).find((state) => state.state === 'error');
+      if (errored) {
         const message: MessageNode = {
           type: 'message',
-          message: 'No repositories found. Configure base URL and open a Gitea repo.',
-          severity: 'info'
+          repo: errored.repo,
+          message: errored.error ?? 'Failed to load runs',
+          severity: 'error'
         };
         return [message];
       }
-      return Array.from(this.repos.values()).map<RepoNode>((state) => ({
-        type: 'repo',
-        repo: state.repo,
-        pinned: state.pinned,
-        state: state.state,
-        error: state.error,
-        hasRuns: state.runs.length > 0
-      }));
-    }
-
-    if (element.type === 'repo') {
-      const repoState = this.repos.get(repoKey(element.repo));
-      if (!repoState) {
-        return [];
+      if (this.mode === 'workflows') {
+        const groups = this.buildWorkflowGroups();
+        if (!groups.length) {
+          return [
+            {
+              type: 'message',
+              message: this.hasLoadingJobs() ? 'Loading jobs...' : 'No runs yet',
+              severity: 'info'
+            } satisfies MessageNode
+          ];
+        }
+        return groups;
       }
-      if (repoState.state === 'error') {
+      const runs = this.collectRuns();
+      if (!runs.length) {
         return [
           {
             type: 'message',
-            repo: element.repo,
-            message: repoState.error ?? 'Failed to load runs',
-            severity: 'error'
-          } satisfies MessageNode
-        ];
-      }
-      if (!repoState.runs.length && repoState.state !== 'loading') {
-        return [
-          {
-            type: 'message',
-            repo: element.repo,
-            message: 'No runs found',
+            message: this.hasLoadingJobs() ? 'Loading jobs...' : 'No runs yet',
             severity: 'info'
           } satisfies MessageNode
         ];
       }
-      return repoState.runs.map<RunNode>((run) => ({
+      return runs.map<RunNode>(({ repo, run }) => ({
         type: 'run',
-        repo: repoState.repo,
+        repo,
+        run
+      }));
+    }
+
+    if (element.type === 'workflowGroup') {
+      return element.runs.map<RunNode>((run) => ({
+        type: 'run',
+        repo: element.repo,
         run
       }));
     }
@@ -177,6 +199,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     }
     this.repos.clear();
     next.forEach((value, key) => this.repos.set(key, value));
+    this.configErrors = [];
     this.refresh();
   }
 
@@ -186,7 +209,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       state.state = 'loading';
       state.error = undefined;
       state.inFlightJobs.clear();
-      this.refresh(repo);
+      this.refresh();
     }
   }
 
@@ -195,7 +218,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     if (state) {
       state.state = 'error';
       state.error = error;
-      this.refresh(repo);
+      this.refresh();
     }
   }
 
@@ -211,7 +234,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       }
       state.jobs = nextJobs;
       state.inFlightJobs = new Map();
-      this.refresh(repo);
+      this.refresh();
     }
   }
 
@@ -230,16 +253,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       const existing = state.jobs.get(runId);
       state.jobs.set(runId, { state: 'loading', jobs: existing?.jobs ?? [] });
       state.inFlightJobs.delete(runId);
-      const run = state.runs.find((r) => r.id === runId);
-      this.refresh(
-        run
-          ? {
-              type: 'run',
-              repo,
-              run
-            }
-          : repo
-      );
+      this.refresh();
     }
   }
 
@@ -248,41 +262,77 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     if (state) {
       state.jobs.set(runId, { state: 'error', jobs: [], error });
       state.inFlightJobs.delete(runId);
-      const run = state.runs.find((r) => r.id === runId);
-      this.refresh(
-        run
-          ? {
-              type: 'run',
-              repo,
-              run
-            }
-          : repo
-      );
+      this.refresh();
     }
   }
 
   clear(): void {
     this.repos.clear();
+    this.configErrors = [];
     this.refresh();
   }
 
-  refresh(node?: ActionsNode | RepoRef): void {
+  setConfigErrors(errors: Array<{ message: string; action: 'configureBaseUrl' | 'setToken' }>): void {
+    this.configErrors = errors;
+    this.refresh();
+  }
+
+  refresh(node?: ActionsNode): void {
     if (!node) {
       this.onDidChangeTreeDataEmitter.fire();
       return;
     }
-    if ('type' in node) {
-      this.onDidChangeTreeDataEmitter.fire(node as ActionsNode);
-    } else {
-      const repo = node as RepoRef;
-      this.onDidChangeTreeDataEmitter.fire({
-        type: 'repo',
-        repo,
-        pinned: false,
-        state: 'idle',
-        hasRuns: false
-      } satisfies RepoNode);
+    this.onDidChangeTreeDataEmitter.fire(node);
+  }
+
+  private collectRuns(): { repo: RepoRef; run: WorkflowRun }[] {
+    const results: { repo: RepoRef; run: WorkflowRun }[] = [];
+    for (const state of this.repos.values()) {
+      if (state.state === 'error') {
+        continue;
+      }
+      for (const run of state.runs) {
+        results.push({ repo: state.repo, run });
+      }
     }
+    results.sort((a, b) => {
+      const aTime = a.run.updatedAt ?? a.run.completedAt ?? a.run.startedAt ?? a.run.createdAt ?? '';
+      const bTime = b.run.updatedAt ?? b.run.completedAt ?? b.run.startedAt ?? b.run.createdAt ?? '';
+      return bTime.localeCompare(aTime);
+    });
+    return results;
+  }
+
+  private buildWorkflowGroups(): WorkflowGroupNode[] {
+    const groups = new Map<string, { name: string; runs: { repo: RepoRef; run: WorkflowRun }[] }>();
+    for (const entry of this.collectRuns()) {
+      const workflowName = entry.run.workflowName ?? entry.run.name;
+      const existing = groups.get(workflowName);
+      if (!existing) {
+        groups.set(workflowName, { name: workflowName, runs: [entry] });
+      } else {
+        existing.runs.push(entry);
+      }
+    }
+    const ordered = Array.from(groups.values()).sort((a, b) => {
+      const aTime =
+        a.runs[0]?.run.updatedAt ?? a.runs[0]?.run.completedAt ?? a.runs[0]?.run.startedAt ?? a.runs[0]?.run.createdAt ?? '';
+      const bTime =
+        b.runs[0]?.run.updatedAt ?? b.runs[0]?.run.completedAt ?? b.runs[0]?.run.startedAt ?? b.runs[0]?.run.createdAt ?? '';
+      return bTime.localeCompare(aTime);
+    });
+    return ordered.map<WorkflowGroupNode>((group) => ({
+      type: 'workflowGroup',
+      name: group.name,
+      runs: group.runs.map((r) => r.run),
+      repo: group.runs[0]?.repo ?? { host: '', owner: '', name: '' }
+    }));
+  }
+
+  private hasLoadingJobs(): boolean {
+    return Array.from(this.repos.values()).some((state) =>
+      Array.from(state.jobs.values()).some((cache) => cache.state === 'loading' || cache.state === 'unloaded')
+    );
   }
 }
 

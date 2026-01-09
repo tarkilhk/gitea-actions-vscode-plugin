@@ -1,21 +1,30 @@
 import * as vscode from 'vscode';
 import { Job, RepoRef, WorkflowRun, Step } from '../gitea/models';
-import { iconForJob, iconForRun, iconForStep, repoIcon, errorIcon, infoIcon } from './icons';
+import {
+  iconForJob,
+  iconForRun,
+  iconForStep,
+  repoIcon,
+  errorIcon,
+  infoIcon,
+  secretIcon,
+  variableIcon,
+  settingsIcon,
+  folderIcon
+} from './icons';
 import { formatAgo, formatDateTime, formatDuration } from '../util/time';
-
-export type RepoNode = {
-  type: 'repo';
-  repo: RepoRef;
-  pinned: boolean;
-  state: 'idle' | 'loading' | 'error';
-  error?: string;
-  hasRuns: boolean;
-};
 
 export type RunNode = {
   type: 'run';
   repo: RepoRef;
   run: WorkflowRun;
+};
+
+export type WorkflowGroupNode = {
+  type: 'workflowGroup';
+  name: string;
+  runs: WorkflowRun[];
+  repo: RepoRef;
 };
 
 export type JobNode = {
@@ -38,76 +47,112 @@ export type MessageNode = {
   repo?: RepoRef;
   message: string;
   severity: 'info' | 'error';
+  action?: 'configureBaseUrl' | 'setToken';
 };
 
-export type ActionsNode = RepoNode | RunNode | JobNode | StepNode | MessageNode;
+export type RepoNode = {
+  type: 'repo';
+  repo: RepoRef;
+};
 
-function shortSha(sha?: string): string {
-  return sha ? sha.substring(0, 7) : '';
+export type SecretsRootNode = {
+  type: 'secretsRoot';
+  repo: RepoRef;
+};
+
+export type SecretNode = {
+  type: 'secret';
+  repo: RepoRef;
+  name: string;
+  description?: string;
+  createdAt?: string;
+};
+
+export type VariablesRootNode = {
+  type: 'variablesRoot';
+  repo: RepoRef;
+};
+
+export type VariableNode = {
+  type: 'variable';
+  repo: RepoRef;
+  name: string;
+  description?: string;
+  value?: string;
+};
+
+export type ConfigRootNode = {
+  type: 'configRoot';
+  repo?: RepoRef;
+};
+
+export type TokenNode = {
+  type: 'token';
+  hasToken: boolean;
+};
+
+export type ConfigActionNode = {
+  type: 'configAction';
+  action: 'testConnection';
+};
+
+export type ActionsNode =
+  | RunNode
+  | WorkflowGroupNode
+  | JobNode
+  | StepNode
+  | MessageNode
+  | RepoNode
+  | SecretsRootNode
+  | SecretNode
+  | VariablesRootNode
+  | VariableNode
+  | ConfigRootNode
+  | TokenNode
+  | ConfigActionNode;
+
+function buildRunLabel(run: WorkflowRun): string {
+  const base = run.workflowName ?? run.displayTitle ?? run.name;
+  const idPart = run.runNumber ?? run.id;
+  return `${base} #${idPart}`;
 }
 
-function eventIcon(event?: string): string {
-  const lower = (event ?? '').toLowerCase();
-  if (lower === 'pull_request' || lower === 'pull-request' || lower === 'pr') {
-    return '$(git-pull-request) ';
-  }
-  if (lower === 'push') {
-    return '$(git-commit) ';
-  }
-  return '';
+function buildRunTooltip(run: WorkflowRun): string {
+  const duration = formatDuration(run.startedAt ?? run.createdAt, run.completedAt ?? run.updatedAt);
+  const status = run.conclusion ?? run.status;
+  const statusLabel = status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Status';
+  const when = formatAgo(run.completedAt ?? run.updatedAt ?? run.createdAt);
+  const absolute = formatDateTime(run.completedAt ?? run.updatedAt ?? run.createdAt);
+  const actor = run.actor ?? 'unknown';
+  const event = run.event ?? 'workflow';
+  const commitMsg = run.commitMessage ?? '';
+  return [
+    `${statusLabel}${duration ? ` in ${duration}` : ''}`,
+    `Triggered via ${event} by ${actor} ${when}${absolute ? ` (${absolute})` : ''}`,
+    commitMsg ? `Commit: ${commitMsg}` : ''
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 export function toTreeItem(node: ActionsNode): vscode.TreeItem {
   switch (node.type) {
-    case 'repo': {
-      const item = new vscode.TreeItem(`${node.repo.owner}/${node.repo.name}`, vscode.TreeItemCollapsibleState.Collapsed);
-      item.contextValue = node.pinned ? 'giteaRepoPinned' : 'giteaRepo';
+    case 'workflowGroup': {
+      const item = new vscode.TreeItem(node.name, vscode.TreeItemCollapsibleState.Collapsed);
+      item.contextValue = 'giteaWorkflowGroup';
       item.iconPath = repoIcon;
-      if (node.state === 'loading') {
-        item.description = 'Loading...';
-      } else if (node.state === 'error') {
-        item.description = 'Error';
-        item.tooltip = node.error;
-      }
+      item.description = `${node.runs.length} run${node.runs.length === 1 ? '' : 's'}`;
       return item;
     }
     case 'run': {
       const { run } = node;
-      const labelPrefix = eventIcon(run.event);
-      const label = `${labelPrefix}${run.name}`;
-      const metaParts: string[] = [];
-      if (run.runNumber) {
-        const attempt = run.runAttempt && run.runAttempt > 1 ? ` (attempt ${run.runAttempt})` : '';
-        metaParts.push(`#${run.runNumber}${attempt}`);
-      }
-      if (run.branch) {
-        metaParts.push(run.branch);
-      }
-      if (run.sha) {
-        metaParts.push(shortSha(run.sha));
-      }
+      const label = buildRunLabel(run);
       const duration = formatDuration(run.startedAt ?? run.createdAt, run.completedAt ?? run.updatedAt);
-      if (duration) {
-        metaParts.push(duration);
-      }
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
       item.id = `run-${run.id}`;
       item.iconPath = iconForRun(run);
-      const updated = formatAgo(run.updatedAt ?? run.completedAt ?? run.createdAt);
-      item.description = metaParts.length ? metaParts.join(' · ') : updated;
-      item.tooltip = [
-        run.name,
-        run.event ? `Event: ${run.event}` : '',
-        run.runNumber ? `Run #: ${run.runNumber}` : '',
-        run.runAttempt ? `Attempt: ${run.runAttempt}` : '',
-        run.branch ? `Branch: ${run.branch}` : '',
-        run.sha ? `Commit: ${run.sha}` : '',
-        run.startedAt ? `Started: ${formatDateTime(run.startedAt)}` : run.createdAt ? `Created: ${formatDateTime(run.createdAt)}` : '',
-        run.completedAt ? `Completed: ${formatDateTime(run.completedAt)}` : run.updatedAt ? `Updated: ${formatDateTime(run.updatedAt)}` : '',
-        duration ? `Duration: ${duration}` : ''
-      ]
-        .filter(Boolean)
-        .join('\n');
+      item.description = duration || undefined;
+      item.tooltip = buildRunTooltip(run);
       item.contextValue = 'giteaRun';
       if (run.htmlUrl) {
         item.resourceUri = vscode.Uri.parse(run.htmlUrl);
@@ -118,7 +163,7 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
       const { job } = node;
       const label = job.name;
       const duration = formatDuration(job.startedAt, job.completedAt);
-      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
       item.id = `job-${node.runId}-${job.id}`;
       item.iconPath = iconForJob(job);
       item.description = duration || undefined;
@@ -167,6 +212,79 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
       const item = new vscode.TreeItem(node.message, vscode.TreeItemCollapsibleState.None);
       item.iconPath = node.severity === 'error' ? errorIcon : infoIcon;
       item.contextValue = 'giteaMessage';
+      if (node.action === 'configureBaseUrl') {
+        item.command = {
+          command: 'giteaActions.openBaseUrlSettings',
+          title: 'Configure base URL',
+          arguments: []
+        };
+      } else if (node.action === 'setToken') {
+        item.command = {
+          command: 'giteaActions.setToken',
+          title: 'Set token',
+          arguments: []
+        };
+      }
+      return item;
+    }
+    case 'repo': {
+      const item = new vscode.TreeItem(`${node.repo.owner}/${node.repo.name}`, vscode.TreeItemCollapsibleState.Collapsed);
+      item.iconPath = repoIcon;
+      item.contextValue = 'giteaRepo';
+      return item;
+    }
+    case 'configRoot': {
+      const item = new vscode.TreeItem('Gitea Actions Config', vscode.TreeItemCollapsibleState.Collapsed);
+      item.iconPath = settingsIcon;
+      item.contextValue = 'giteaConfigRoot';
+      return item;
+    }
+    case 'token': {
+      const item = new vscode.TreeItem('Token', vscode.TreeItemCollapsibleState.None);
+      item.iconPath = new vscode.ThemeIcon('key');
+      item.description = node.hasToken ? '✓' : '✗';
+      item.contextValue = 'giteaToken';
+      return item;
+    }
+    case 'configAction': {
+      const item = new vscode.TreeItem('Test Connection', vscode.TreeItemCollapsibleState.None);
+      item.iconPath = new vscode.ThemeIcon('sync');
+      item.contextValue = 'giteaConfigAction';
+      item.command = {
+        command: 'giteaActions.testConnection',
+        title: 'Test Connection'
+      };
+      return item;
+    }
+    case 'secretsRoot': {
+      const item = new vscode.TreeItem('Secrets', vscode.TreeItemCollapsibleState.Collapsed);
+      item.iconPath = secretIcon;
+      item.contextValue = 'giteaSecretsRoot';
+      return item;
+    }
+    case 'secret': {
+      const item = new vscode.TreeItem(node.name, vscode.TreeItemCollapsibleState.None);
+      item.iconPath = secretIcon;
+      item.description = node.description || undefined;
+      item.contextValue = 'giteaSecret';
+      item.tooltip = node.description ? `${node.name}\n${node.description}` : node.name;
+      return item;
+    }
+    case 'variablesRoot': {
+      const item = new vscode.TreeItem('Variables', vscode.TreeItemCollapsibleState.Collapsed);
+      item.iconPath = variableIcon;
+      item.contextValue = 'giteaVariablesRoot';
+      return item;
+    }
+    case 'variable': {
+      const item = new vscode.TreeItem(node.name, vscode.TreeItemCollapsibleState.None);
+      item.iconPath = variableIcon;
+      item.description = node.description || undefined;
+      item.contextValue = 'giteaVariable';
+      const tooltipParts = [node.name];
+      if (node.description) tooltipParts.push(node.description);
+      if (node.value) tooltipParts.push(`Value: ${node.value}`);
+      item.tooltip = tooltipParts.join('\n');
       return item;
     }
   }

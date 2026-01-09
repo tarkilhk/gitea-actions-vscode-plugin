@@ -47,7 +47,7 @@ export class GiteaClient {
     return text;
   }
 
-  private async request(path: string, init?: RequestInit, timeoutOverride?: number): Promise<Response> {
+  async request(path: string, init?: RequestInit, timeoutOverride?: number): Promise<Response> {
     const url = `${this.baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
     const headers = new Headers(init?.headers ?? {});
     headers.set('accept', 'application/json');
