@@ -14,24 +14,14 @@
     "gitea",
     "actions",
     "gitea actions",
-    "ci",
-    "cd",
-    "continuous integration",
-    "continuous deployment",
-    "workflow",
     "workflows",
     "pipeline",
     "devops",
-    "github actions alternative",
-    "ci/cd",
-    "automation",
     "jobs",
     "runs",
     "logs",
     "secrets",
-    "variables",
-    "git",
-    "runner"
+    "variables"
   ],
   "engines": {
     "vscode": "^1.105.0"
