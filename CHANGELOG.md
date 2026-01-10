@@ -1,3 +1,9 @@
+## [2.0.2] - 2026-01-10
+
+### 🐛 Fixed
+
+- update status icon for queued state and enhance sorting logic (c0cdecd)
+
 ## [2.0.1] - 2026-01-10
 
 ### ♻️ Changed
