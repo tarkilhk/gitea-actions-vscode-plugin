@@ -1,3 +1,9 @@
+## [2.1.1] - 2026-01-10
+
+### 📝 Changed
+
+- update README for Gitea Actions extension (5a95749)
+
 ## [2.1.0] - 2026-01-10
 
 ### ✨ Added
