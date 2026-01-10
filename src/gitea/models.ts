@@ -47,8 +47,3 @@ export type Job = {
   htmlUrl?: string;
   steps?: Step[];
 };
-
-export type PinnedRepo = {
-  owner: string;
-  name: string;
-};

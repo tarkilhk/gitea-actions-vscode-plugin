@@ -1,13 +1,12 @@
 import * as vscode from 'vscode';
 import { getSettings, ExtensionSettings } from './config/settings';
 import { getToken } from './config/secrets';
-import { PinnedRepo, WorkflowRun, Job, Step } from './gitea/models';
+import { WorkflowRun, Job, Step } from './gitea/models';
 import { ActionsTreeProvider } from './views/actionsTreeProvider';
 import { SettingsTreeProvider } from './views/settingsTreeProvider';
 import { ActionsNode } from './views/nodes';
 import { registerCommands } from './controllers/commands';
 import { RefreshController } from './controllers/refreshController';
-import { loadPinned } from './gitea/discovery';
 import { setVerboseLogging } from './util/logging';
 
 // Commands
@@ -32,9 +31,7 @@ import {
 } from './commands/variableCommands';
 import {
   viewJobLogs,
-  openInBrowser,
-  pinRepo,
-  unpinRepo
+  openInBrowser
 } from './commands/runCommands';
 
 // Services
@@ -74,7 +71,6 @@ let settingsTree: vscode.TreeView<ActionsNode>;
 let refreshController: RefreshController | undefined;
 const lastRunsByRepo = new Map<string, WorkflowRun[]>();
 const workflowNameCache = new Map<string, Map<string, string>>();
-let pinnedRepos: PinnedRepo[] = [];
 const inFlightJobFetch = new Map<string, Promise<Job[] | undefined>>();
 const jobRefreshTimers = new Map<string, NodeJS.Timeout>();
 const jobStepsCache = new Map<string, Step[]>();
@@ -89,7 +85,6 @@ function getRefreshState(): RefreshServiceState {
     settings,
     cachedToken,
     secretStorage,
-    pinnedRepos,
     workspaceProvider,
     pinnedProvider,
     settingsProvider,
@@ -106,7 +101,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   settings = getSettings();
   secretStorage = context.secrets;
   cachedToken = await getToken(secretStorage);
-  pinnedRepos = await loadPinned(context.globalState);
 
   // Initialize tree views
   workspaceTree = vscode.window.createTreeView('giteaActions.runs', {
@@ -149,8 +143,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refresh: () => manualRefresh(),
     viewJobLogs: (node) => viewJobLogs(node, createLogStreamContext()),
     openInBrowser: (node) => openInBrowser(node),
-    pinRepo: (repo) => pinRepo(context, repo, createRunContext()),
-    unpinRepo: (repo) => unpinRepo(context, repo, createRunContext()),
     refreshSecrets: (node) => refreshSecrets(node, createSecretContext()),
     refreshVariables: (node) => refreshVariables(node, createVariableContext()),
     createSecret: (node) => createSecret(node, createSecretContext()),
@@ -248,17 +240,6 @@ function createVariableContext() {
     getConfigError: () => getConfigError(getRefreshState()),
     ensureApi: () => ensureApi(getRefreshState()),
     settingsProvider
-  };
-}
-
-function createRunContext() {
-  return {
-    showToast,
-    getConfigError: () => getConfigError(getRefreshState()),
-    ensureApi: () => ensureApi(getRefreshState()),
-    scheduleRefresh,
-    getPinnedRepos: () => pinnedRepos,
-    setPinnedRepos: (repos: PinnedRepo[]) => { pinnedRepos = repos; }
   };
 }
 

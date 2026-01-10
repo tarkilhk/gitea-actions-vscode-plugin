@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
-import { ActionsNode, JobNode, RepoNode, SecretNode, VariableNode, SecretsRootNode, VariablesRootNode } from '../views/nodes';
-import { RepoRef } from '../gitea/models';
+import { ActionsNode, JobNode, SecretNode, VariableNode, SecretsRootNode, VariablesRootNode } from '../views/nodes';
 
 export type CommandHandlers = {
   setToken: () => Promise<void>;
@@ -9,8 +8,6 @@ export type CommandHandlers = {
   refresh: () => Promise<void>;
   viewJobLogs: (node: JobNode) => Promise<void>;
   openInBrowser: (node: ActionsNode) => Promise<void>;
-  pinRepo: (repo: RepoRef) => Promise<void>;
-  unpinRepo: (repo: RepoRef) => Promise<void>;
   refreshSecrets: (node: SecretsRootNode) => Promise<void>;
   refreshVariables: (node: VariablesRootNode) => Promise<void>;
   createSecret: (node: SecretsRootNode) => Promise<void>;
@@ -30,8 +27,6 @@ export function registerCommands(context: vscode.ExtensionContext, handlers: Com
     vscode.commands.registerCommand('giteaActions.refresh', () => handlers.refresh()),
     vscode.commands.registerCommand('giteaActions.viewJobLogs', (node: JobNode) => handlers.viewJobLogs(node)),
     vscode.commands.registerCommand('giteaActions.openInBrowser', (node: ActionsNode) => handlers.openInBrowser(node)),
-    vscode.commands.registerCommand('giteaActions.pinRepo', (node: RepoNode) => handlers.pinRepo(node.repo)),
-    vscode.commands.registerCommand('giteaActions.unpinRepo', (node: RepoNode) => handlers.unpinRepo(node.repo)),
     vscode.commands.registerCommand('giteaActions.refreshSecrets', (node: SecretsRootNode) => handlers.refreshSecrets(node)),
     vscode.commands.registerCommand('giteaActions.refreshVariables', (node: VariablesRootNode) => handlers.refreshVariables(node)),
     vscode.commands.registerCommand('giteaActions.createSecret', (node: SecretsRootNode) => handlers.createSecret(node)),

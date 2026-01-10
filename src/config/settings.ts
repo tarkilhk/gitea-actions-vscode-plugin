@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-export type DiscoveryMode = 'workspace' | 'pinned' | 'allAccessible';
+export type DiscoveryMode = 'workspace' | 'allAccessible';
 
 export interface ExtensionSettings {
   baseUrl: string;

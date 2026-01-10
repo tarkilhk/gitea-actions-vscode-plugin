@@ -52,6 +52,7 @@ export type MessageNode = {
 export type RepoNode = {
   type: 'repo';
   repo: RepoRef;
+  expanded?: boolean;
 };
 
 export type SecretsRootNode = {
@@ -227,7 +228,10 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
       return item;
     }
     case 'repo': {
-      const item = new vscode.TreeItem(`${node.repo.owner}/${node.repo.name}`, vscode.TreeItemCollapsibleState.Collapsed);
+      const collapsibleState = node.expanded
+        ? vscode.TreeItemCollapsibleState.Expanded
+        : vscode.TreeItemCollapsibleState.Collapsed;
+      const item = new vscode.TreeItem(`${node.repo.owner}/${node.repo.name}`, collapsibleState);
       item.iconPath = repoIcon;
       item.contextValue = 'giteaRepo';
       return item;

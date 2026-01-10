@@ -1,17 +1,7 @@
 import * as vscode from 'vscode';
 import { GiteaApi } from '../gitea/api';
-import { RepoRef, Job, Step, PinnedRepo } from '../gitea/models';
+import { RepoRef, Job, Step } from '../gitea/models';
 import { ActionsNode } from '../views/nodes';
-import { savePinned } from '../gitea/discovery';
-
-export type RunCommandContext = {
-  showToast: (message: string, type?: 'info' | 'warning' | 'error') => void;
-  getConfigError: () => Promise<string | undefined>;
-  ensureApi: () => Promise<GiteaApi | undefined>;
-  scheduleRefresh: () => void;
-  getPinnedRepos: () => PinnedRepo[];
-  setPinnedRepos: (repos: PinnedRepo[]) => void;
-};
 
 export type LogStreamContext = {
   getConfigError: () => Promise<string | undefined>;
@@ -86,33 +76,4 @@ export async function openInBrowser(node: ActionsNode): Promise<void> {
     return;
   }
   await vscode.env.openExternal(vscode.Uri.parse(url));
-}
-
-export async function pinRepo(
-  extensionContext: vscode.ExtensionContext,
-  repo: RepoRef,
-  ctx: RunCommandContext
-): Promise<void> {
-  const pinnedRepos = ctx.getPinnedRepos();
-  if (pinnedRepos.find((r) => r.owner === repo.owner && r.name === repo.name)) {
-    return;
-  }
-  const newPinned = [...pinnedRepos, { owner: repo.owner, name: repo.name }];
-  ctx.setPinnedRepos(newPinned);
-  await savePinned(extensionContext.globalState, newPinned);
-  ctx.showToast(`Pinned ${repo.owner}/${repo.name}.`);
-  ctx.scheduleRefresh();
-}
-
-export async function unpinRepo(
-  extensionContext: vscode.ExtensionContext,
-  repo: RepoRef,
-  ctx: RunCommandContext
-): Promise<void> {
-  const pinnedRepos = ctx.getPinnedRepos();
-  const newPinned = pinnedRepos.filter((r) => !(r.owner === repo.owner && r.name === repo.name));
-  ctx.setPinnedRepos(newPinned);
-  await savePinned(extensionContext.globalState, newPinned);
-  ctx.showToast(`Unpinned ${repo.owner}/${repo.name}.`);
-  ctx.scheduleRefresh();
 }

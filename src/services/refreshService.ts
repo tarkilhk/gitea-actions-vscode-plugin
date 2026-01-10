@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 import { GiteaApi } from '../gitea/api';
 import { GiteaClient } from '../gitea/client';
-import { RepoRef, WorkflowRun, Job, Step, PinnedRepo } from '../gitea/models';
+import { RepoRef, WorkflowRun, Job, Step } from '../gitea/models';
 import { ExtensionSettings, getSettings } from '../config/settings';
 import { getToken } from '../config/secrets';
-import { discoverWorkspaceRepos, buildPinnedRepoRefs } from '../gitea/discovery';
+import { discoverWorkspaceRepos } from '../gitea/discovery';
 import { ActionsTreeProvider } from '../views/actionsTreeProvider';
 import { SettingsTreeProvider } from '../views/settingsTreeProvider';
 import { logDebug, logWarn } from '../util/logging';
@@ -21,7 +21,6 @@ export type RefreshServiceState = {
   settings: ExtensionSettings;
   cachedToken: string | undefined;
   secretStorage: vscode.SecretStorage;
-  pinnedRepos: PinnedRepo[];
   workspaceProvider: ActionsTreeProvider;
   pinnedProvider: ActionsTreeProvider;
   settingsProvider: SettingsTreeProvider;
@@ -124,24 +123,21 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
   }
 
   const settings = getSettings();
-  const { workspaceRepos, pinnedRefs, pinnedKeys } = await resolveRepos(api, state, settings);
-  state.workspaceProvider.setRepositories(workspaceRepos, pinnedKeys);
-  const pinnedSource = pinnedRefs.length ? pinnedRefs : workspaceRepos;
-  state.pinnedProvider.setRepositories(pinnedSource, pinnedKeys);
-
-  const combinedRepos = mergeRepos(workspaceRepos, pinnedRefs);
+  const repos = await resolveRepos(api, state, settings);
+  state.workspaceProvider.setRepositories(repos);
+  state.pinnedProvider.setRepositories(repos);
   
   // Update settings view with the first available repo
   state.settingsProvider.setTokenStatus(!!state.cachedToken);
-  if (combinedRepos.length > 0) {
-    const settingsRepo = combinedRepos[0];
+  if (repos.length > 0) {
+    const settingsRepo = repos[0];
     state.settingsProvider.setRepository(settingsRepo);
   } else {
     state.settingsProvider.setRepository(undefined);
   }
   let anyRunning = false;
 
-  await runWithLimit(combinedRepos, MAX_CONCURRENT_REPOS, async (repo) => {
+  await runWithLimit(repos, MAX_CONCURRENT_REPOS, async (repo) => {
     state.workspaceProvider.setRepoLoading(repo);
     state.pinnedProvider.setRepoLoading(repo);
     try {
@@ -183,9 +179,7 @@ async function resolveRepos(
   api: GiteaApi,
   state: RefreshServiceState,
   settings: ExtensionSettings
-): Promise<{ workspaceRepos: RepoRef[]; pinnedRefs: RepoRef[]; pinnedKeys: Set<string> }> {
-  const pinnedRefs = buildPinnedRepoRefs(settings.baseUrl, state.pinnedRepos);
-  const pinnedKeys = new Set(pinnedRefs.map((r) => repoKey(r)));
+): Promise<RepoRef[]> {
   let baseHost = '';
   try {
     baseHost = new URL(settings.baseUrl).host;
@@ -193,17 +187,14 @@ async function resolveRepos(
     baseHost = '';
   }
 
-  let workspaceRepos: RepoRef[] = [];
   const folders = vscode.workspace.workspaceFolders ?? [];
 
   if (settings.discoveryMode === 'workspace') {
-    workspaceRepos = await discoverWorkspaceRepos(settings.baseUrl, folders);
-  } else if (settings.discoveryMode === 'pinned') {
-    workspaceRepos = [];
+    return discoverWorkspaceRepos(settings.baseUrl, folders);
   } else if (settings.discoveryMode === 'allAccessible') {
     try {
       const repos = await api.listAccessibleRepos();
-      workspaceRepos = repos.map((repo) => ({
+      return repos.map((repo) => ({
         host: baseHost,
         owner: repo.owner,
         name: repo.name,
@@ -211,11 +202,11 @@ async function resolveRepos(
       }));
     } catch (err) {
       logWarn(`Failed to list accessible repositories: ${String(err)}`);
-      workspaceRepos = await discoverWorkspaceRepos(settings.baseUrl, folders);
+      return discoverWorkspaceRepos(settings.baseUrl, folders);
     }
   }
 
-  return { workspaceRepos, pinnedRefs, pinnedKeys };
+  return [];
 }
 
 async function refreshWorkflows(
@@ -368,19 +359,6 @@ function workflowIdFromPath(path?: string): string | undefined {
 
 export function repoKey(repo: RepoRef): string {
   return `${repo.owner}/${repo.name}`;
-}
-
-function mergeRepos(a: RepoRef[], b: RepoRef[]): RepoRef[] {
-  const result: RepoRef[] = [];
-  const seen = new Set<string>();
-  for (const repo of [...a, ...b]) {
-    const key = repoKey(repo);
-    if (!seen.has(key)) {
-      result.push(repo);
-      seen.add(key);
-    }
-  }
-  return result;
 }
 
 async function runWithLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
