@@ -6,6 +6,7 @@ View and manage Gitea Actions workflow runs directly from VS Code / Cursor.
 
 - **Workflow Monitoring** — View workflow runs, jobs, and steps with live status icons
 - **Live Log Streaming** — View logs in editor tabs with auto-refresh for running jobs
+- **Step-Specific Logs** — Click on individual steps to view their logs separately
 - **Secrets & Variables** — Create, update, and delete repository secrets and variables
 - **Multiple Discovery Modes** — Discover repos from workspace, pinned list, or all accessible via API
 - **Adaptive Polling** — Faster refresh when runs are active, slower when idle
@@ -74,8 +75,9 @@ Right-click on Secrets or Variables to add, edit, or delete items.
 ## Tips
 
 - **Expand runs** to load jobs on-demand (they're not fetched until you expand)
-- **Click a job or step** to view its logs in an editor tab
-- **Running jobs** stream logs live and auto-update until completion
+- **Click a job** to view all logs for that job in an editor tab
+- **Click a step** to view only that step's logs in a separate tab
+- **Running jobs/steps** stream logs live and auto-update until completion
 - **Click the status bar** to quickly focus the Gitea Actions view
 - **Right-click** any tree item for context menu actions
 
