@@ -54,7 +54,7 @@ export function statusIcon(item: HasStatusConclusion): StatusIcon {
   const conclusion = normalizeConclusion(item.conclusion);
   
   if (status === 'queued') {
-    return { id: 'history', color: 'charts.blue' };
+    return { id: 'sync~spin', color: 'charts.blue' };
   }
   if (status === 'running') {
     return { id: 'loading~spin', color: 'charts.yellow' };

@@ -295,7 +295,14 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
         results.push({ repo: state.repo, run });
       }
     }
+    // Sort: running/queued runs first (prioritized), then by time descending
     results.sort((a, b) => {
+      const aActive = a.run.status === 'running' || a.run.status === 'queued';
+      const bActive = b.run.status === 'running' || b.run.status === 'queued';
+      // Active runs come first
+      if (aActive && !bActive) return -1;
+      if (!aActive && bActive) return 1;
+      // Within same category, sort by most recent time
       const aTime = a.run.updatedAt ?? a.run.completedAt ?? a.run.startedAt ?? a.run.createdAt ?? '';
       const bTime = b.run.updatedAt ?? b.run.completedAt ?? b.run.startedAt ?? b.run.createdAt ?? '';
       return bTime.localeCompare(aTime);
@@ -314,7 +321,12 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
         existing.runs.push(entry);
       }
     }
+    // Sort groups: groups with active runs first, then by time descending
     const ordered = Array.from(groups.values()).sort((a, b) => {
+      const aHasActive = a.runs.some(r => r.run.status === 'running' || r.run.status === 'queued');
+      const bHasActive = b.runs.some(r => r.run.status === 'running' || r.run.status === 'queued');
+      if (aHasActive && !bHasActive) return -1;
+      if (!aHasActive && bHasActive) return 1;
       const aTime =
         a.runs[0]?.run.updatedAt ?? a.runs[0]?.run.completedAt ?? a.runs[0]?.run.startedAt ?? a.runs[0]?.run.createdAt ?? '';
       const bTime =

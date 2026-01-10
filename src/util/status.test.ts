@@ -93,7 +93,7 @@ describe('normalizeConclusion', () => {
 describe('statusIcon', () => {
   it('returns queued icon for queued status', () => {
     const icon = statusIcon({ status: 'queued' });
-    expect(icon.id).toBe('history');
+    expect(icon.id).toBe('sync~spin');
     expect(icon.color).toBe('charts.blue');
   });
 
