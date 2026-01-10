@@ -1,3 +1,13 @@
+## [2.1.0] - 2026-01-10
+
+### ✨ Added
+
+- add step-specific log viewing and enhance log streaming functionality (f8e6db4)
+
+### ♻️ Changed
+
+- remove pinned repository functionality and update discovery mode (00dfffb)
+
 ## [2.0.3] - 2026-01-10
 
 - Maintenance release
