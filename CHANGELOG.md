@@ -1,3 +1,9 @@
+## [2.0.1] - 2026-01-10
+
+### ♻️ Changed
+
+- update package.json for extension visibility (e6839a4)
+
 ## [2.0.0] - 2026-01-09
 
 ### ✨ Added
