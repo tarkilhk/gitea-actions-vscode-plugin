@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getSettings, ExtensionSettings } from './config/settings';
 import { getToken } from './config/secrets';
-import { WorkflowRun, Job, Step } from './gitea/models';
+import { WorkflowRun, Job, Step, toRunRef, RunRef } from './gitea/models';
 import { ActionsTreeProvider } from './views/actionsTreeProvider';
 import { SettingsTreeProvider } from './views/settingsTreeProvider';
 import { ActionsNode } from './views/nodes';
@@ -38,9 +38,13 @@ import {
 import {
   LiveLogContentProvider,
   buildLogUri,
+  buildStepLogUri,
   stopLogStream,
   startLogStream,
-  isJobActive
+  startStepLogStream,
+  fetchStepLogs,
+  isJobActive,
+  isStepActive
 } from './services/logStreamService';
 import {
   initStatusBar,
@@ -53,6 +57,7 @@ import {
   getConfigError,
   getConfigErrors,
   ensureApi,
+  ensureInternalApi,
   hydrateJobSteps,
   scheduleJobRefresh,
   fetchJobsForRun
@@ -245,23 +250,34 @@ function createVariableContext() {
 
 function createLogStreamContext() {
   const state = getRefreshState();
+  const stepLogDeps = {
+    logContentProvider,
+    getSettings: () => settings
+  };
   return {
     getConfigError: () => getConfigError(state),
     ensureApi: () => ensureApi(state),
+    ensureInternalApi: () => ensureInternalApi(state),
     logContentProvider,
-    startLogStream: (api: import('./gitea/api').GiteaApi, uri: vscode.Uri, repo: import('./gitea/models').RepoRef, runId: number | string | undefined, jobId: number | string) =>
-      startLogStream(api, uri, repo, runId, jobId, {
+    startLogStream: (api: import('./gitea/api').GiteaApi, uri: vscode.Uri, runRef: RunRef | undefined, jobId: number | string) =>
+      startLogStream(api, uri, runRef, jobId, {
         logContentProvider,
         getSettings: () => settings,
         updateJobs: (r, rid, jobs) => {
           workspaceProvider.updateJobs(r, rid, jobs);
           pinnedProvider.updateJobs(r, rid, jobs);
         },
-        hydrateJobSteps: (api, r, rid, jobs) => hydrateJobSteps(api, r, rid, jobs, state),
-        scheduleJobRefresh: (r, rid, jobs) => scheduleJobRefresh(r, rid, jobs, state, settings)
+        hydrateJobSteps: (ref, jobs) => hydrateJobSteps(ref, jobs, state),
+        scheduleJobRefresh: (ref, jobs) => scheduleJobRefresh(ref, jobs, state, settings)
       }),
+    fetchStepLogs: (internalApi: import('./gitea/internalApi').GiteaInternalApi, uri: vscode.Uri, runRef: RunRef, jobIndex: number, stepIndex: number, totalSteps: number) =>
+      fetchStepLogs(internalApi, uri, runRef, jobIndex, stepIndex, totalSteps, stepLogDeps),
+    startStepLogStream: (internalApi: import('./gitea/internalApi').GiteaInternalApi, uri: vscode.Uri, runRef: RunRef, jobIndex: number, stepIndex: number, totalSteps: number, isActive: () => boolean) =>
+      startStepLogStream(internalApi, uri, runRef, jobIndex, stepIndex, totalSteps, isActive, stepLogDeps),
     buildLogUri,
-    isJobActive
+    buildStepLogUri,
+    isJobActive,
+    isStepActive
   };
 }
 
@@ -301,6 +317,6 @@ async function handleExpand(element: ActionsNode): Promise<void> {
   }
   if (element.type === 'run') {
     const state = getRefreshState();
-    await fetchJobsForRun(element.repo, element.run.id, state, settings);
+    await fetchJobsForRun(toRunRef(element.repo, element.run), state, settings);
   }
 }

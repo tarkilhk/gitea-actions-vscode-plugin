@@ -5,6 +5,34 @@ export type RepoRef = {
   htmlUrl?: string;
 };
 
+/**
+ * Reference to a workflow run with all identifiers needed for API calls.
+ * 
+ * - `id`: Database ID used by the official Gitea API
+ * - `runNumber`: URL path number used by the internal/undocumented API
+ * 
+ * The internal API uses run number in URL paths (e.g., /actions/runs/540),
+ * while the official API uses the database ID (e.g., /actions/runs/639/jobs).
+ */
+export type RunRef = {
+  repo: RepoRef;
+  /** Database ID - used by official Gitea API endpoints */
+  id: number | string;
+  /** Run number as shown in URL - used by internal API endpoints */
+  runNumber?: number;
+};
+
+/**
+ * Creates a RunRef from a WorkflowRun and RepoRef.
+ */
+export function toRunRef(repo: RepoRef, run: WorkflowRun): RunRef {
+  return {
+    repo,
+    id: run.id,
+    runNumber: run.runNumber
+  };
+}
+
 export type WorkflowRun = {
   id: number | string;
   name: string;
@@ -35,6 +63,29 @@ export type Step = {
   startedAt?: string;
   completedAt?: string;
   number?: number;
+  /** Duration string from internal API (e.g., "1s", "35s") */
+  duration?: string;
+  /** Step index (0-based) for internal API calls */
+  stepIndex?: number;
+};
+
+/**
+ * Log line from the internal Gitea API.
+ */
+export type StepLogLine = {
+  index: number;
+  message: string;
+  timestamp: number;
+};
+
+/**
+ * Log data for a single step from the internal API.
+ */
+export type StepLog = {
+  step: number;
+  cursor: number | null;
+  lines: StepLogLine[];
+  started?: number;
 };
 
 export type Job = {

@@ -9,13 +9,13 @@ export interface ClientOptions {
 }
 
 export class GiteaClient {
-  private readonly baseUrl: string;
+  private readonly _baseUrl: string;
   private readonly token?: string;
   private readonly agent: Dispatcher;
   private readonly timeoutMs: number;
 
   constructor(options: ClientOptions) {
-    this.baseUrl = options.baseUrl.replace(/\/+$/, '');
+    this._baseUrl = options.baseUrl.replace(/\/+$/, '');
     this.token = options.token;
     this.timeoutMs = options.timeoutMs ?? 15000;
     this.agent = new Agent({
@@ -23,6 +23,11 @@ export class GiteaClient {
         rejectUnauthorized: !options.insecureSkipVerify
       }
     });
+  }
+
+  /** Returns the base URL of the Gitea instance */
+  get baseUrl(): string {
+    return this._baseUrl;
   }
 
   async getJson<T>(path: string, init?: RequestInit, timeoutMs?: number): Promise<T> {
@@ -48,9 +53,12 @@ export class GiteaClient {
   }
 
   async request(path: string, init?: RequestInit, timeoutOverride?: number): Promise<Response> {
-    const url = `${this.baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
+    const url = `${this._baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
     const headers = new Headers(init?.headers ?? {});
-    headers.set('accept', 'application/json');
+    // Only set Accept if not already provided
+    if (!headers.has('accept')) {
+      headers.set('accept', 'application/json');
+    }
     if (this.token) {
       headers.set('authorization', `token ${this.token}`);
     }

@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { GiteaApi } from '../gitea/api';
 import { GiteaClient } from '../gitea/client';
-import { RepoRef, WorkflowRun, Job, Step } from '../gitea/models';
+import { GiteaInternalApi } from '../gitea/internalApi';
+import { RepoRef, RunRef, WorkflowRun, Job, Step, toRunRef } from '../gitea/models';
 import { ExtensionSettings, getSettings } from '../config/settings';
 import { getToken } from '../config/secrets';
 import { discoverWorkspaceRepos } from '../gitea/discovery';
@@ -67,9 +68,10 @@ export async function getConfigError(state: RefreshServiceState): Promise<string
 }
 
 /**
- * Ensures API client is available, returns undefined if not configured.
+ * Creates a GiteaClient with the current settings.
+ * Returns undefined if not configured.
  */
-export async function ensureApi(state: RefreshServiceState): Promise<GiteaApi | undefined> {
+async function createClient(state: RefreshServiceState): Promise<GiteaClient | undefined> {
   const settings = getSettings();
   if (!settings.baseUrl) {
     updateStatusBar('Set giteaActions.baseUrl');
@@ -82,12 +84,34 @@ export async function ensureApi(state: RefreshServiceState): Promise<GiteaApi | 
   }
   // Update cached token in state
   state.cachedToken = token;
-  const client = new GiteaClient({
+  return new GiteaClient({
     baseUrl: settings.baseUrl,
     token: token,
     insecureSkipVerify: settings.insecureSkipVerify
   });
+}
+
+/**
+ * Ensures API client is available, returns undefined if not configured.
+ */
+export async function ensureApi(state: RefreshServiceState): Promise<GiteaApi | undefined> {
+  const client = await createClient(state);
+  if (!client) {
+    return undefined;
+  }
   return new GiteaApi(client);
+}
+
+/**
+ * Creates an internal API client for undocumented endpoints.
+ * Returns undefined if not configured.
+ */
+export async function ensureInternalApi(state: RefreshServiceState): Promise<GiteaInternalApi | undefined> {
+  const client = await createClient(state);
+  if (!client) {
+    return undefined;
+  }
+  return new GiteaInternalApi(client);
 }
 
 /**
@@ -160,7 +184,7 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
         anyRunning = true;
       }
       await runWithLimit(limitedRuns, MAX_CONCURRENT_JOBS, async (run) => {
-        await fetchJobsForRun(repo, run.id, state, settings);
+        await fetchJobsForRun(toRunRef(repo, run), state, settings);
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -235,13 +259,21 @@ async function refreshWorkflows(
   }
 }
 
+/**
+ * Fetches jobs for a workflow run.
+ * 
+ * @param runRef - Reference containing repo, run ID, and run number
+ * @param state - Refresh service state
+ * @param settings - Extension settings
+ * @param options - Optional settings (refreshOnly skips loading indicator)
+ */
 export async function fetchJobsForRun(
-  repo: RepoRef,
-  runId: number | string,
+  runRef: RunRef,
   state: RefreshServiceState,
   settings: ExtensionSettings,
   options?: { refreshOnly?: boolean }
 ): Promise<Job[] | undefined> {
+  const { repo, id: runId } = runRef;
   const key = `${repoKey(repo)}#${runId}`;
   if (state.inFlightJobFetch.has(key)) {
     return state.inFlightJobFetch.get(key);
@@ -264,14 +296,16 @@ export async function fetchJobsForRun(
     try {
       logDebug(`Fetching jobs for ${repo.owner}/${repo.name} run ${runId} (limit=${settings.maxJobsPerRun}, timeout=${JOBS_TIMEOUT_MS}ms)`);
       const start = Date.now();
+      // Official API uses database ID
       const jobs = await api.listJobs(repo, runId, { limit: settings.maxJobsPerRun, timeoutMs: JOBS_TIMEOUT_MS });
-      const hydratedCount = await hydrateJobSteps(api, repo, runId, jobs, state);
+      // Internal API uses runNumber (falls back to runId if not available)
+      const hydratedCount = await hydrateJobSteps(runRef, jobs, state);
       const elapsed = Date.now() - start;
       const hydrationNote = hydratedCount ? ` (steps fetched for ${hydratedCount} job${hydratedCount === 1 ? '' : 's'})` : '';
       logDebug(`Fetched ${jobs.length} jobs for ${repo.owner}/${repo.name} run ${runId} in ${elapsed}ms${hydrationNote}`);
       state.workspaceProvider.updateJobs(repo, runId, jobs);
       state.pinnedProvider.updateJobs(repo, runId, jobs);
-      scheduleJobRefresh(repo, runId, jobs, state, settings);
+      scheduleJobRefresh(runRef, jobs, state, settings);
       return jobs;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -286,47 +320,86 @@ export async function fetchJobsForRun(
   return fetchPromise;
 }
 
+/**
+ * Hydrates job steps using the internal Gitea API.
+ * 
+ * This uses undocumented endpoints that are not part of the official API.
+ * The internal API uses run number (URL path) and job index (0-based position).
+ * 
+ * @param runRef - Reference containing repo and run identifiers
+ * @param jobs - Jobs to hydrate with step data
+ * @param state - Refresh service state
+ */
 export async function hydrateJobSteps(
-  api: GiteaApi,
-  repo: RepoRef,
-  runId: number | string,
+  runRef: RunRef,
   jobs: Job[],
   state: RefreshServiceState
 ): Promise<number> {
-  const missing = jobs.filter((job) => !job.steps || job.steps.length === 0);
-  if (!missing.length) {
+  const { repo } = runRef;
+  // Internal API uses runNumber in URL path, fallback to id if not available
+  const internalRunId = runRef.runNumber ?? runRef.id;
+
+  // Find jobs that need step hydration (missing or empty steps)
+  const jobsToHydrate: Array<{ job: Job; jobIndex: number }> = [];
+  jobs.forEach((job, index) => {
+    if (!job.steps || job.steps.length === 0) {
+      jobsToHydrate.push({ job, jobIndex: index });
+    }
+  });
+
+  if (!jobsToHydrate.length) {
     return 0;
   }
+
+  // Create internal API client
+  const internalApi = await ensureInternalApi(state);
+  if (!internalApi) {
+    logWarn(`Failed to create internal API client for step hydration`);
+    return 0;
+  }
+
   const hydrateStart = Date.now();
-  await runWithLimit(missing, MAX_CONCURRENT_JOBS, async (job) => {
-    const cacheKey = `${repo.owner}/${repo.name}#${job.id}`;
+  await runWithLimit(jobsToHydrate, MAX_CONCURRENT_JOBS, async ({ job, jobIndex }) => {
+    const cacheKey = `${repo.owner}/${repo.name}#${internalRunId}#${jobIndex}`;
     const cachedSteps = state.jobStepsCache.get(cacheKey);
     if (cachedSteps?.length) {
       job.steps = cachedSteps;
       return;
     }
     try {
-      const detailed = await api.getJob(repo, job.id, { timeoutMs: JOBS_TIMEOUT_MS });
-      if (detailed.steps?.length) {
-        job.steps = detailed.steps;
-        state.jobStepsCache.set(cacheKey, detailed.steps);
+      logDebug(`Fetching steps via internal API for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} run ${internalRunId}`);
+      const result = await internalApi.getJobWithSteps(repo, internalRunId, jobIndex);
+      if (result.steps?.length) {
+        job.steps = result.steps;
+        state.jobStepsCache.set(cacheKey, result.steps);
+        logDebug(`Fetched ${result.steps.length} steps for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} run ${internalRunId}`);
+      } else {
+        logWarn(`Internal API returned no steps for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} run ${internalRunId}`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logDebug(`Failed to fetch steps for job ${job.id} in ${repo.owner}/${repo.name} run ${runId}: ${message}`);
+      logWarn(`Failed to fetch steps via internal API for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} run ${internalRunId}: ${message}`);
     }
   });
-  logDebug(`Hydrated steps for ${missing.length} job(s) in ${repo.owner}/${repo.name} run ${runId} in ${Date.now() - hydrateStart}ms`);
-  return missing.length;
+  logDebug(`Hydrated steps for ${jobsToHydrate.length} job(s) in ${repo.owner}/${repo.name} run ${internalRunId} in ${Date.now() - hydrateStart}ms`);
+  return jobsToHydrate.length;
 }
 
+/**
+ * Schedules a delayed refresh for active jobs.
+ * 
+ * @param runRef - Reference to the workflow run
+ * @param jobs - Current jobs for the run
+ * @param state - Refresh service state
+ * @param settings - Extension settings
+ */
 export function scheduleJobRefresh(
-  repo: RepoRef,
-  runId: number | string,
+  runRef: RunRef,
   jobs: Job[],
   state: RefreshServiceState,
   settings: ExtensionSettings
 ): void {
+  const { repo, id: runId } = runRef;
   const key = `${repoKey(repo)}#${runId}`;
   const hasActive = jobs.some((job) => isJobActive(job.status));
   if (!hasActive) {
@@ -342,7 +415,7 @@ export function scheduleJobRefresh(
   }
   const timer = setTimeout(() => {
     state.jobRefreshTimers.delete(key);
-    void fetchJobsForRun(repo, runId, state, settings, { refreshOnly: true });
+    void fetchJobsForRun(runRef, state, settings, { refreshOnly: true });
   }, JOB_REFRESH_DELAY_MS);
   state.jobRefreshTimers.set(key, timer);
 }

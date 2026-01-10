@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { Job, RepoRef, WorkflowRun, Step } from '../gitea/models';
+import { Job, RepoRef, RunRef, WorkflowRun, Step, toRunRef } from '../gitea/models';
 import {
   iconForJob,
   iconForRun,
@@ -28,18 +28,31 @@ export type WorkflowGroupNode = {
 
 export type JobNode = {
   type: 'job';
-  repo: RepoRef;
-  runId: number | string;
+  /** Reference to the workflow run (contains repo, id, and runNumber) */
+  runRef: RunRef;
   job: Job;
+  /** 0-based job index within the run, used by internal API */
+  jobIndex: number;
 };
 
 export type StepNode = {
   type: 'step';
-  repo: RepoRef;
-  runId: number | string;
+  /** Reference to the workflow run (contains repo, id, and runNumber) */
+  runRef: RunRef;
   job: Job;
   step: Step;
+  /** 0-based job index within the run, used by internal API */
+  jobIndex: number;
+  /** 0-based step index within the job, used by internal API */
+  stepIndex: number;
 };
+
+/**
+ * Helper to create a RunRef from a RunNode.
+ */
+export function runNodeToRef(node: RunNode): RunRef {
+  return toRunRef(node.repo, node.run);
+}
 
 export type MessageNode = {
   type: 'message';
@@ -160,11 +173,11 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
       return item;
     }
     case 'job': {
-      const { job } = node;
+      const { job, runRef } = node;
       const label = job.name;
       const duration = formatDuration(job.startedAt, job.completedAt);
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
-      item.id = `job-${node.runId}-${job.id}`;
+      item.id = `job-${runRef.id}-${job.id}`;
       item.iconPath = iconForJob(job);
       item.description = duration || undefined;
       item.tooltip = [
@@ -186,11 +199,12 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
       return item;
     }
     case 'step': {
-      const { step, job } = node;
-      const duration = formatDuration(step.startedAt, step.completedAt);
+      const { step, job, runRef } = node;
+      // Use duration from internal API if available, otherwise calculate from timestamps
+      const duration = step.duration || formatDuration(step.startedAt, step.completedAt);
       const label = step.name || 'Step';
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
-      item.id = `step-${node.runId}-${job.id}-${step.id ?? step.number ?? step.name}`;
+      item.id = `step-${runRef.id}-${job.id}-${step.stepIndex ?? step.id ?? step.number ?? step.name}`;
       item.iconPath = iconForStep(step);
       item.description = duration || undefined;
       item.tooltip = [

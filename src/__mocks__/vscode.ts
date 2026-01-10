@@ -8,12 +8,12 @@ export const Uri = {
   file: (path: string) => ({ toString: () => path, scheme: 'file', path })
 };
 
-export const ThemeIcon = class ThemeIcon {
-  constructor(public id: string, public color?: ThemeColor) {}
-};
-
 export const ThemeColor = class ThemeColor {
   constructor(public id: string) {}
+};
+
+export const ThemeIcon = class ThemeIcon {
+  constructor(public id: string, public color?: InstanceType<typeof ThemeColor>) {}
 };
 
 export const TreeItemCollapsibleState = {

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ActionsNode, MessageNode, RunNode, WorkflowGroupNode, JobNode, RepoNode, toTreeItem } from './nodes';
-import { RepoRef, WorkflowRun, Job } from '../gitea/models';
+import { RepoRef, WorkflowRun, Job, toRunRef } from '../gitea/models';
 
 type RepoKey = string;
 
@@ -176,11 +176,12 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
           } satisfies MessageNode
         ];
       }
-      return cache.jobs.map<JobNode>((job) => ({
+      const runRef = toRunRef(element.repo, element.run);
+      return cache.jobs.map<JobNode>((job, index) => ({
         type: 'job',
-        repo: element.repo,
-        runId: element.run.id,
-        job
+        runRef,
+        job,
+        jobIndex: index
       }));
     }
 
@@ -190,18 +191,19 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
         return [
           {
             type: 'message',
-            repo: element.repo,
+            repo: element.runRef.repo,
             message: 'No steps reported',
             severity: 'info'
           } satisfies MessageNode
         ];
       }
-      return steps.map((step) => ({
+      return steps.map((step, index) => ({
         type: 'step',
-        repo: element.repo,
-        runId: element.runId,
+        runRef: element.runRef,
         job: element.job,
-        step
+        step,
+        jobIndex: element.jobIndex,
+        stepIndex: index
       }));
     }
 
