@@ -1,12 +1,11 @@
 import * as vscode from 'vscode';
-import { ActionsNode, MessageNode, RunNode, WorkflowGroupNode, JobNode, toTreeItem } from './nodes';
+import { ActionsNode, MessageNode, RunNode, WorkflowGroupNode, JobNode, RepoNode, toTreeItem } from './nodes';
 import { RepoRef, WorkflowRun, Job } from '../gitea/models';
 
 type RepoKey = string;
 
 type RepoState = {
   repo: RepoRef;
-  pinned: boolean;
   runs: WorkflowRun[];
   jobs: Map<string | number, JobCache>;
   inFlightJobs: Map<string | number, Promise<void>>;
@@ -79,19 +78,46 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
         }
         return groups;
       }
-      const runs = this.collectRuns();
-      if (!runs.length) {
+      // For 'runs' mode: always show repo nodes at top level for consistency
+      const repoStates = Array.from(this.repos.values())
+        .filter((state) => state.state !== 'error');
+      if (!repoStates.length) {
         return [
           {
             type: 'message',
-            message: this.hasLoadingJobs() ? 'Loading jobs...' : 'No runs yet',
+            message: this.hasLoadingJobs() ? 'Loading...' : 'No runs yet',
             severity: 'info'
           } satisfies MessageNode
         ];
       }
-      return runs.map<RunNode>(({ repo, run }) => ({
+      // Auto-expand when there's only one repo
+      const autoExpand = repoStates.length === 1;
+      return repoStates.map<RepoNode>((state) => ({
+        type: 'repo',
+        repo: state.repo,
+        expanded: autoExpand
+      }));
+    }
+
+    // Handle repo node expansion - show runs for this repo
+    if (element.type === 'repo') {
+      const state = this.repos.get(repoKey(element.repo));
+      if (!state || state.state === 'error') {
+        return [];
+      }
+      if (!state.runs.length) {
+        return [
+          {
+            type: 'message',
+            repo: element.repo,
+            message: state.state === 'loading' ? 'Loading runs...' : 'No runs yet',
+            severity: 'info'
+          } satisfies MessageNode
+        ];
+      }
+      return state.runs.map<RunNode>((run) => ({
         type: 'run',
-        repo,
+        repo: element.repo,
         run
       }));
     }
@@ -182,14 +208,13 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     return [];
   }
 
-  setRepositories(repos: RepoRef[], pinnedIds: Set<string>): void {
+  setRepositories(repos: RepoRef[]): void {
     const next = new Map<RepoKey, RepoState>();
     for (const repo of repos) {
       const key = repoKey(repo);
       const existing = this.repos.get(key);
       next.set(key, {
         repo,
-        pinned: pinnedIds.has(key),
         runs: existing?.runs ?? [],
         jobs: existing?.jobs ?? new Map(),
         inFlightJobs: existing?.inFlightJobs ?? new Map(),

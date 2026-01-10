@@ -1,12 +1,11 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as vscode from 'vscode';
-import { RepoRef, PinnedRepo } from './models';
+import { RepoRef } from './models';
 import { getHostFromBaseUrl } from '../config/settings';
 import { logDebug, logWarn } from '../util/logging';
 
 const execFileAsync = promisify(execFile);
-export const PINNED_STORAGE_KEY = 'giteaActions.pinnedRepos';
 
 export async function discoverWorkspaceRepos(baseUrl: string, workspaceFolders: readonly vscode.WorkspaceFolder[]): Promise<RepoRef[]> {
   const host = getHostFromBaseUrl(baseUrl);
@@ -41,27 +40,6 @@ export async function discoverWorkspaceRepos(baseUrl: string, workspaceFolders: 
     }
   }
   return repos;
-}
-
-export async function loadPinned(globalState: vscode.Memento): Promise<PinnedRepo[]> {
-  return globalState.get<PinnedRepo[]>(PINNED_STORAGE_KEY, []);
-}
-
-export async function savePinned(globalState: vscode.Memento, repos: PinnedRepo[]): Promise<void> {
-  await globalState.update(PINNED_STORAGE_KEY, repos);
-}
-
-export function buildPinnedRepoRefs(baseUrl: string, pinned: PinnedRepo[]): RepoRef[] {
-  const host = getHostFromBaseUrl(baseUrl);
-  if (!host) {
-    return [];
-  }
-  return pinned.map((repo) => ({
-    host,
-    owner: repo.owner,
-    name: repo.name,
-    htmlUrl: `${baseUrl.replace(/\/+$/, '')}/${repo.owner}/${repo.name}`
-  }));
 }
 
 async function isInsideGitRepo(path: string): Promise<boolean> {
