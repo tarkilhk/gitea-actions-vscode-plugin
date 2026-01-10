@@ -1,7 +1,7 @@
 {
   "name": "gitea-actions-vscode-plugin",
   "displayName": "Gitea Actions",
-  "description": "View and inspect Gitea Actions workflow runs directly from VS Code / Cursor.",
+  "description": "View and inspect Gitea Actions workflow runs directly from VS Code / Cursor. Monitor CI/CD pipelines, check job status, view logs, and manage secrets and variables for your Gitea Actions workflows.",
   "icon": "resources/gitea-actions-icon.png",
   "version": "2.0.0",
   "publisher": "tarkil",
@@ -10,6 +10,29 @@
     "type": "git",
     "url": "https://github.com/tarkilhk/gitea-actions-vscode-plugin"
   },
+  "keywords": [
+    "gitea",
+    "actions",
+    "gitea actions",
+    "ci",
+    "cd",
+    "continuous integration",
+    "continuous deployment",
+    "workflow",
+    "workflows",
+    "pipeline",
+    "devops",
+    "github actions alternative",
+    "ci/cd",
+    "automation",
+    "jobs",
+    "runs",
+    "logs",
+    "secrets",
+    "variables",
+    "git",
+    "runner"
+  ],
   "engines": {
     "vscode": "^1.105.0"
   },
