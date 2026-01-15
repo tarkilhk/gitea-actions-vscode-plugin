@@ -1,3 +1,9 @@
+## [2.1.3] - 2026-01-15
+
+### ✨ Added
+
+- enhance TreeItem IDs for better context and organization (a646d10)
+
 ## [2.1.2] - 2026-01-15
 
 ### ✨ Added
