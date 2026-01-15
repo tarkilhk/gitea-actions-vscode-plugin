@@ -270,6 +270,17 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     if (state) {
       state.jobs.set(runId, { state: 'idle', jobs });
       state.inFlightJobs.delete(runId);
+      // Explicitly refresh the run node so its icon updates when jobs change
+      const run = state.runs.find((r) => String(r.id) === String(runId));
+      if (run) {
+        const runNode: RunNode = {
+          type: 'run',
+          repo,
+          run
+        };
+        this.refresh(runNode);
+      }
+      // Also do a general refresh for child nodes (jobs)
       this.refresh();
     }
   }
@@ -280,6 +291,17 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       const existing = state.jobs.get(runId);
       state.jobs.set(runId, { state: 'loading', jobs: existing?.jobs ?? [] });
       state.inFlightJobs.delete(runId);
+      // Explicitly refresh the run node so its icon updates
+      const run = state.runs.find((r) => String(r.id) === String(runId));
+      if (run) {
+        const runNode: RunNode = {
+          type: 'run',
+          repo,
+          run
+        };
+        this.refresh(runNode);
+      }
+      // Also do a general refresh for child nodes
       this.refresh();
     }
   }
@@ -289,6 +311,17 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     if (state) {
       state.jobs.set(runId, { state: 'error', jobs: [], error });
       state.inFlightJobs.delete(runId);
+      // Explicitly refresh the run node so its icon updates
+      const run = state.runs.find((r) => String(r.id) === String(runId));
+      if (run) {
+        const runNode: RunNode = {
+          type: 'run',
+          repo,
+          run
+        };
+        this.refresh(runNode);
+      }
+      // Also do a general refresh for child nodes
       this.refresh();
     }
   }
