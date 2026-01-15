@@ -1,3 +1,9 @@
+## [2.1.5] - 2026-01-15
+
+### ✨ Added
+
+- improve run node refresh logic in ActionsTreeProvider (2fea930)
+
 ## [2.1.4] - 2026-01-15
 
 - Maintenance release
