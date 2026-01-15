@@ -152,17 +152,18 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
   switch (node.type) {
     case 'workflowGroup': {
       const item = new vscode.TreeItem(node.name, vscode.TreeItemCollapsibleState.Collapsed);
+      item.id = `workflow-group-${node.repo.owner}-${node.repo.name}-${node.name}`;
       item.contextValue = 'giteaWorkflowGroup';
       item.iconPath = repoIcon;
       item.description = `${node.runs.length} run${node.runs.length === 1 ? '' : 's'}`;
       return item;
     }
     case 'run': {
-      const { run } = node;
+      const { run, repo } = node;
       const label = buildRunLabel(run);
       const duration = formatDuration(run.startedAt ?? run.createdAt, run.completedAt ?? run.updatedAt);
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
-      item.id = `run-${run.id}`;
+      item.id = `run-${repo.owner}-${repo.name}-${run.id}`;
       item.iconPath = iconForRun(run);
       item.description = duration || undefined;
       item.tooltip = buildRunTooltip(run);
@@ -177,7 +178,7 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
       const label = job.name;
       const duration = formatDuration(job.startedAt, job.completedAt);
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
-      item.id = `job-${runRef.id}-${job.id}`;
+      item.id = `job-${runRef.repo.owner}-${runRef.repo.name}-${runRef.id}-${job.id}`;
       item.iconPath = iconForJob(job);
       item.description = duration || undefined;
       item.tooltip = [
@@ -204,7 +205,7 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
       const duration = step.duration || formatDuration(step.startedAt, step.completedAt);
       const label = step.name || 'Step';
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
-      item.id = `step-${runRef.id}-${job.id}-${step.stepIndex ?? step.id ?? step.number ?? step.name}`;
+      item.id = `step-${runRef.repo.owner}-${runRef.repo.name}-${runRef.id}-${job.id}-${step.stepIndex ?? step.id ?? step.number ?? step.name}`;
       item.iconPath = iconForStep(step);
       item.description = duration || undefined;
       item.tooltip = [
@@ -246,18 +247,21 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
         ? vscode.TreeItemCollapsibleState.Expanded
         : vscode.TreeItemCollapsibleState.Collapsed;
       const item = new vscode.TreeItem(`${node.repo.owner}/${node.repo.name}`, collapsibleState);
+      item.id = `repo-${node.repo.owner}-${node.repo.name}`;
       item.iconPath = repoIcon;
       item.contextValue = 'giteaRepo';
       return item;
     }
     case 'configRoot': {
       const item = new vscode.TreeItem('Gitea Actions Config', vscode.TreeItemCollapsibleState.Collapsed);
+      item.id = node.repo ? `config-root-${node.repo.owner}-${node.repo.name}` : 'config-root';
       item.iconPath = settingsIcon;
       item.contextValue = 'giteaConfigRoot';
       return item;
     }
     case 'token': {
       const item = new vscode.TreeItem('Token', vscode.TreeItemCollapsibleState.None);
+      item.id = 'token-status';
       item.iconPath = new vscode.ThemeIcon('key');
       item.description = node.hasToken ? '✓' : '✗';
       item.contextValue = 'giteaToken';
@@ -265,6 +269,7 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
     }
     case 'configAction': {
       const item = new vscode.TreeItem('Test Connection', vscode.TreeItemCollapsibleState.None);
+      item.id = `config-action-${node.action}`;
       item.iconPath = new vscode.ThemeIcon('sync');
       item.contextValue = 'giteaConfigAction';
       item.command = {
@@ -275,12 +280,14 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
     }
     case 'secretsRoot': {
       const item = new vscode.TreeItem('Secrets', vscode.TreeItemCollapsibleState.Collapsed);
+      item.id = `secrets-root-${node.repo.owner}-${node.repo.name}`;
       item.iconPath = secretIcon;
       item.contextValue = 'giteaSecretsRoot';
       return item;
     }
     case 'secret': {
       const item = new vscode.TreeItem(node.name, vscode.TreeItemCollapsibleState.None);
+      item.id = `secret-${node.repo.owner}-${node.repo.name}-${node.name}`;
       item.iconPath = secretIcon;
       item.description = node.description || undefined;
       item.contextValue = 'giteaSecret';
@@ -289,12 +296,14 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
     }
     case 'variablesRoot': {
       const item = new vscode.TreeItem('Variables', vscode.TreeItemCollapsibleState.Collapsed);
+      item.id = `variables-root-${node.repo.owner}-${node.repo.name}`;
       item.iconPath = variableIcon;
       item.contextValue = 'giteaVariablesRoot';
       return item;
     }
     case 'variable': {
       const item = new vscode.TreeItem(node.name, vscode.TreeItemCollapsibleState.None);
+      item.id = `variable-${node.repo.owner}-${node.repo.name}-${node.name}`;
       item.iconPath = variableIcon;
       item.description = node.description || undefined;
       item.contextValue = 'giteaVariable';
