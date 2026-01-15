@@ -299,7 +299,8 @@ export async function fetchJobsForRun(
       // Official API uses database ID
       const jobs = await api.listJobs(repo, runId, { limit: settings.maxJobsPerRun, timeoutMs: JOBS_TIMEOUT_MS });
       // Internal API uses runNumber (falls back to runId if not available)
-      const hydratedCount = await hydrateJobSteps(runRef, jobs, state);
+      // Force refresh steps when doing a refresh (refreshOnly=true) to get updated statuses
+      const hydratedCount = await hydrateJobSteps(runRef, jobs, state, { forceRefresh: options?.refreshOnly ?? false });
       const elapsed = Date.now() - start;
       const hydrationNote = hydratedCount ? ` (steps fetched for ${hydratedCount} job${hydratedCount === 1 ? '' : 's'})` : '';
       logDebug(`Fetched ${jobs.length} jobs for ${repo.owner}/${repo.name} run ${runId} in ${elapsed}ms${hydrationNote}`);
@@ -329,20 +330,28 @@ export async function fetchJobsForRun(
  * @param runRef - Reference containing repo and run identifiers
  * @param jobs - Jobs to hydrate with step data
  * @param state - Refresh service state
+ * @param options - Optional settings (forceRefresh re-fetches steps even if cached)
  */
 export async function hydrateJobSteps(
   runRef: RunRef,
   jobs: Job[],
-  state: RefreshServiceState
+  state: RefreshServiceState,
+  options?: { forceRefresh?: boolean }
 ): Promise<number> {
   const { repo } = runRef;
   // Internal API uses runNumber in URL path, fallback to id if not available
   const internalRunId = runRef.runNumber ?? runRef.id;
 
-  // Find jobs that need step hydration (missing or empty steps)
+  // Find jobs that need step hydration
+  // If forceRefresh is true, re-fetch steps for all jobs to get updated statuses
   const jobsToHydrate: Array<{ job: Job; jobIndex: number }> = [];
   jobs.forEach((job, index) => {
-    if (!job.steps || job.steps.length === 0) {
+    const needsHydration = !job.steps || job.steps.length === 0;
+    const isActive = isJobActive(job.status);
+    // Force refresh for active jobs (they're still running) or when explicitly requested
+    const shouldForceRefresh = options?.forceRefresh || isActive;
+    
+    if (needsHydration || shouldForceRefresh) {
       jobsToHydrate.push({ job, jobIndex: index });
     }
   });
@@ -361,7 +370,12 @@ export async function hydrateJobSteps(
   const hydrateStart = Date.now();
   await runWithLimit(jobsToHydrate, MAX_CONCURRENT_JOBS, async ({ job, jobIndex }) => {
     const cacheKey = `${repo.owner}/${repo.name}#${internalRunId}#${jobIndex}`;
-    const cachedSteps = state.jobStepsCache.get(cacheKey);
+    const isActive = isJobActive(job.status);
+    // Only use cache if not forcing refresh and job is not active
+    // Active jobs need fresh data, and forceRefresh means we want latest status
+    const shouldUseCache = !options?.forceRefresh && !isActive;
+    const cachedSteps = shouldUseCache ? state.jobStepsCache.get(cacheKey) : undefined;
+    
     if (cachedSteps?.length) {
       job.steps = cachedSteps;
       return;

@@ -86,7 +86,7 @@ export type LogStreamDependencies = {
   logContentProvider: LiveLogContentProvider;
   getSettings: () => ExtensionSettings;
   updateJobs: (repo: RepoRef, runId: number | string, jobs: Job[]) => void;
-  hydrateJobSteps: (runRef: RunRef, jobs: Job[]) => Promise<number>;
+  hydrateJobSteps: (runRef: RunRef, jobs: Job[], options?: { forceRefresh?: boolean }) => Promise<number>;
   scheduleJobRefresh: (runRef: RunRef, jobs: Job[]) => void;
 };
 
@@ -131,7 +131,8 @@ export async function startLogStream(
       try {
         const settings = deps.getSettings();
         const jobs = await api.listJobs(repo, runRef.id, { limit: settings.maxJobsPerRun, timeoutMs: JOBS_TIMEOUT_MS });
-        await deps.hydrateJobSteps(runRef, jobs);
+        // Force refresh steps when actively monitoring to get updated statuses
+        await deps.hydrateJobSteps(runRef, jobs, { forceRefresh: true });
         deps.updateJobs(repo, runRef.id, jobs);
         deps.scheduleJobRefresh(runRef, jobs);
         const job = jobs.find((j) => String(j.id) === String(jobId));
