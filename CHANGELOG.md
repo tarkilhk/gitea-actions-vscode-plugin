@@ -1,3 +1,9 @@
+## [2.1.2] - 2026-01-15
+
+### ✨ Added
+
+- enhance job step hydration with force refresh option (a6f20bb)
+
 ## [2.1.1] - 2026-01-10
 
 ### 📝 Changed
