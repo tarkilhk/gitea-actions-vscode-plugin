@@ -1,3 +1,10 @@
+## [2.3.4] - 2026-01-22
+
+### ✨ Added
+
+- update icons and settings messages for improved clarity (0e9f69b)
+- enhance Gitea API and internal API with improved header management (42ac7ae)
+
 ## [2.3.3] - 2026-01-22
 
 ### ✨ Added
