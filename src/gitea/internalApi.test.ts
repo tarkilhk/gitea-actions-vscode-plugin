@@ -3,9 +3,11 @@ import { GiteaInternalApi, InternalJobResponse } from './internalApi';
 import { GiteaClient } from './client';
 import { RepoRef, StepLog } from './models';
 
+const giteaClientExport = 'GiteaClient';
+
 // Mock the client
 vi.mock('./client', () => ({
-  GiteaClient: vi.fn()
+  [giteaClientExport]: vi.fn()
 }));
 
 const mockRepo: RepoRef = {

@@ -24,6 +24,12 @@ module.exports = tseslint.config(
     },
   },
   {
+    files: ['src/__mocks__/**/*.ts'],
+    rules: {
+      '@typescript-eslint/naming-convention': 'off',
+    },
+  },
+  {
     ignores: ['dist/**', 'node_modules/**', '*.vsix', '**/*.js'],
   }
 );

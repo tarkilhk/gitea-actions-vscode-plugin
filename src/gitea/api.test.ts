@@ -20,12 +20,14 @@ describe('pickArray', () => {
   });
 
   it('extracts workflow_runs array from object', () => {
-    const input = { workflow_runs: [{ id: 1 }, { id: 2 }] };
+    const input: Record<string, unknown> = {};
+    input['workflow_runs'] = [{ id: 1 }, { id: 2 }];
     expect(pickArray(input)).toEqual([{ id: 1 }, { id: 2 }]);
   });
 
   it('prefers data over workflow_runs', () => {
-    const input = { data: [1], workflow_runs: [2] };
+    const input: Record<string, unknown> = { data: [1] };
+    input['workflow_runs'] = [2];
     expect(pickArray(input)).toEqual([1]);
   });
 
@@ -58,14 +60,12 @@ describe('mapRun', () => {
   });
 
   it('handles snake_case field names', () => {
-    const raw = {
-      id: 1,
-      run_number: 42,
-      head_branch: 'main',
-      head_sha: 'abc123',
-      created_at: '2024-01-01T00:00:00Z',
-      html_url: 'https://example.com/run/1'
-    };
+    const raw: Record<string, unknown> = { id: 1 };
+    raw['run_number'] = 42;
+    raw['head_branch'] = 'main';
+    raw['head_sha'] = 'abc123';
+    raw['created_at'] = '2024-01-01T00:00:00Z';
+    raw['html_url'] = 'https://example.com/run/1';
     const result = mapRun(mockRepo, raw);
     
     expect(result.runNumber).toBe(42);
@@ -95,7 +95,9 @@ describe('mapRun', () => {
     expect(result.workflowName).toBe('CI');
 
     // From workflow_name
-    result = mapRun(mockRepo, { id: 1, workflow_name: 'Build' });
+    const snakeWorkflow: Record<string, unknown> = { id: 1 };
+    snakeWorkflow['workflow_name'] = 'Build';
+    result = mapRun(mockRepo, snakeWorkflow);
     expect(result.workflowName).toBe('Build');
 
     // From workflowName
@@ -156,11 +158,9 @@ describe('mapJob', () => {
   });
 
   it('handles snake_case timestamps', () => {
-    const raw = {
-      id: 1,
-      started_at: '2024-01-01T00:00:00Z',
-      completed_at: '2024-01-01T00:05:00Z'
-    };
+    const raw: Record<string, unknown> = { id: 1 };
+    raw['started_at'] = '2024-01-01T00:00:00Z';
+    raw['completed_at'] = '2024-01-01T00:05:00Z';
     const result = mapJob(raw);
     
     expect(result.startedAt).toBe('2024-01-01T00:00:00Z');
@@ -216,16 +216,15 @@ describe('mapStep', () => {
     let result = mapStep({ number: 5, name: 'Step' });
     expect(result.id).toBe(5);
 
-    result = mapStep({ step_id: 10, name: 'Step' });
+    const snakeStepId: Record<string, unknown> = { name: 'Step' };
+    snakeStepId['step_id'] = 10;
+    result = mapStep(snakeStepId);
     expect(result.id).toBe(10);
   });
 
   it('handles start_time as alternative to started_at', () => {
-    const raw = {
-      id: 1,
-      name: 'Step',
-      start_time: '2024-01-01T00:00:00Z'
-    };
+    const raw: Record<string, unknown> = { id: 1, name: 'Step' };
+    raw['start_time'] = '2024-01-01T00:00:00Z';
     const result = mapStep(raw);
     expect(result.startedAt).toBe('2024-01-01T00:00:00Z');
   });

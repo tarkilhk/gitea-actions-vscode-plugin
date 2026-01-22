@@ -672,12 +672,15 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
   }
 
   private buildWorkflowGroups(): WorkflowGroupNode[] {
-    const groups = new Map<string, { name: string; runs: { repo: RepoRef; run: WorkflowRun }[] }>();
+    const groups = new Map<string, { name: string; repo: RepoRef; runs: { repo: RepoRef; run: WorkflowRun }[] }>();
     for (const entry of this.collectRuns()) {
       const workflowName = entry.run.workflowName ?? entry.run.name;
-      const existing = groups.get(workflowName);
+      const repoLabel = `${entry.repo.owner}/${entry.repo.name}`;
+      const displayName = `${workflowName} - ${repoLabel}`;
+      const groupKey = `${repoLabel}::${workflowName}`;
+      const existing = groups.get(groupKey);
       if (!existing) {
-        groups.set(workflowName, { name: workflowName, runs: [entry] });
+        groups.set(groupKey, { name: displayName, repo: entry.repo, runs: [entry] });
       } else {
         existing.runs.push(entry);
       }
@@ -698,7 +701,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       type: 'workflowGroup',
       name: group.name,
       runs: group.runs.map((r) => r.run),
-      repo: group.runs[0]?.repo ?? { host: '', owner: '', name: '' }
+      repo: group.repo
     }));
   }
 

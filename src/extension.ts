@@ -54,6 +54,7 @@ import {
 import {
   RefreshServiceState,
   resetRefreshCaches,
+  cancelJobRefreshTimers,
   refreshAll,
   getConfigError,
   getConfigErrors,
@@ -405,5 +406,6 @@ function updatePollingState(): void {
     refreshController?.start();
   } else {
     refreshController?.stop();
+    cancelJobRefreshTimers(getRefreshState());
   }
 }
