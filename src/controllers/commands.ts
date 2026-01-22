@@ -17,6 +17,7 @@ export type CommandHandlers = {
   updateVariable: (node: VariableNode) => Promise<void>;
   deleteVariable: (node: VariableNode) => Promise<void>;
   openBaseUrlSettings: () => Promise<void>;
+  openSettings: () => Promise<void>;
 };
 
 export function registerCommands(context: vscode.ExtensionContext, handlers: CommandHandlers): void {
@@ -35,6 +36,7 @@ export function registerCommands(context: vscode.ExtensionContext, handlers: Com
     vscode.commands.registerCommand('giteaActions.createVariable', (node: VariablesRootNode) => handlers.createVariable(node)),
     vscode.commands.registerCommand('giteaActions.updateVariable', (node: VariableNode) => handlers.updateVariable(node)),
     vscode.commands.registerCommand('giteaActions.deleteVariable', (node: VariableNode) => handlers.deleteVariable(node)),
-    vscode.commands.registerCommand('giteaActions.openBaseUrlSettings', () => handlers.openBaseUrlSettings())
+    vscode.commands.registerCommand('giteaActions.openBaseUrlSettings', () => handlers.openBaseUrlSettings()),
+    vscode.commands.registerCommand('giteaActions.openSettings', () => handlers.openSettings())
   );
 }

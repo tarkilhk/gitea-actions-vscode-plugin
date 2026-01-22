@@ -106,7 +106,7 @@ export type TokenNode = {
 
 export type ConfigActionNode = {
   type: 'configAction';
-  action: 'testConnection';
+  action: 'testConnection' | 'openSettings';
 };
 
 export type ActionsNode =
@@ -268,14 +268,30 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
       return item;
     }
     case 'configAction': {
-      const item = new vscode.TreeItem('Test Connection', vscode.TreeItemCollapsibleState.None);
+      if (node.action === 'testConnection') {
+        const item = new vscode.TreeItem('Test Connection', vscode.TreeItemCollapsibleState.None);
+        item.id = `config-action-${node.action}`;
+        item.iconPath = new vscode.ThemeIcon('sync');
+        item.contextValue = 'giteaConfigAction';
+        item.command = {
+          command: 'giteaActions.testConnection',
+          title: 'Test Connection'
+        };
+        return item;
+      } else if (node.action === 'openSettings') {
+        const item = new vscode.TreeItem('Open Settings', vscode.TreeItemCollapsibleState.None);
+        item.id = `config-action-${node.action}`;
+        item.iconPath = new vscode.ThemeIcon('settings-gear');
+        item.contextValue = 'giteaConfigAction';
+        item.command = {
+          command: 'giteaActions.openSettings',
+          title: 'Open Settings'
+        };
+        return item;
+      }
+      // Fallback (should not happen)
+      const item = new vscode.TreeItem('Unknown Action', vscode.TreeItemCollapsibleState.None);
       item.id = `config-action-${node.action}`;
-      item.iconPath = new vscode.ThemeIcon('sync');
-      item.contextValue = 'giteaConfigAction';
-      item.command = {
-        command: 'giteaActions.testConnection',
-        title: 'Test Connection'
-      };
       return item;
     }
     case 'secretsRoot': {

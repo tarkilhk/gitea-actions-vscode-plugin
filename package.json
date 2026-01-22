@@ -209,6 +209,10 @@
       {
         "command": "giteaActions.openBaseUrlSettings",
         "title": "Gitea Actions: Open Base URL Settings"
+      },
+      {
+        "command": "giteaActions.openSettings",
+        "title": "Gitea Actions: Open Settings"
       }
     ],
     "menus": {
