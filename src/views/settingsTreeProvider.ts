@@ -37,9 +37,12 @@ export class SettingsTreeProvider implements vscode.TreeDataProvider<ActionsNode
         return [
           {
             type: 'message',
-            message: 'Open a Gitea repository to view settings',
+            message: 'Open a Gitea repository to view secrets and variables',
             severity: 'info'
-          } satisfies MessageNode
+          } satisfies MessageNode,
+          {
+            type: 'configRoot'
+          } satisfies ConfigRootNode
         ];
       }
 
