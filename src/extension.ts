@@ -333,6 +333,7 @@ async function handleExpand(element: ActionsNode): Promise<void> {
   }
   if (element.type === 'run') {
     const state = getRefreshState();
-    await fetchJobsForRun(toRunRef(element.repo, element.run), state, settings);
+    // Pass the actual expanded RunNode instance for proper UI refresh
+    await fetchJobsForRun(toRunRef(element.repo, element.run), state, settings, { runNode: element });
   }
 }

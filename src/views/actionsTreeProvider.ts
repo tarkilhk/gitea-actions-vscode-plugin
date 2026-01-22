@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ActionsNode, MessageNode, RunNode, WorkflowGroupNode, JobNode, RepoNode, toTreeItem } from './nodes';
-import { RepoRef, WorkflowRun, Job, toRunRef } from '../gitea/models';
+import { RepoRef, RunRef, WorkflowRun, Job, toRunRef } from '../gitea/models';
 
 type RepoKey = string;
 
@@ -419,7 +419,14 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     // If nothing changed, don't refresh at all
   }
 
-  updateJobs(repo: RepoRef, runId: number | string, jobs: Job[]): void {
+  /**
+   * Updates the job cache for a run.
+   * @param repo - Repository reference
+   * @param runId - Run ID
+   * @param jobs - Jobs to cache
+   * @param runNode - Optional: the actual expanded RunNode instance for proper refresh
+   */
+  updateJobs(repo: RepoRef, runId: number | string, jobs: Job[], runNode?: RunNode): void {
     const state = this.repos.get(repoKey(repo));
     if (state) {
       const previousCache = state.jobs.get(runId);
@@ -435,18 +442,25 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       if (run) {
         const isActive = run.status === 'running' || run.status === 'queued';
         if (isActive || wasUnloadedOrLoading) {
-          const runNode: RunNode = {
-            type: 'run',
+          // Use the provided runNode instance if available, otherwise create a new one
+          const nodeToRefresh = runNode ?? {
+            type: 'run' as const,
             repo,
             run
           };
-          this.refresh(runNode);
+          this.refresh(nodeToRefresh);
         }
       }
     }
   }
 
-  setRunJobsLoading(repo: RepoRef, runId: number | string): void {
+  /**
+   * Sets the job cache to loading state for a run.
+   * @param repo - Repository reference
+   * @param runId - Run ID
+   * @param runNode - Optional: the actual expanded RunNode instance for proper refresh
+   */
+  setRunJobsLoading(repo: RepoRef, runId: number | string, runNode?: RunNode): void {
     const state = this.repos.get(repoKey(repo));
     if (state) {
       const previousCache = state.jobs.get(runId);
@@ -459,17 +473,25 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       // to show the loading indicator. But only if jobs weren't already loaded.
       const run = state.runs.find((r) => String(r.id) === String(runId));
       if (run && wasUnloadedOrError) {
-        const runNode: RunNode = {
-          type: 'run',
+        // Use the provided runNode instance if available, otherwise create a new one
+        const nodeToRefresh = runNode ?? {
+          type: 'run' as const,
           repo,
           run
         };
-        this.refresh(runNode);
+        this.refresh(nodeToRefresh);
       }
     }
   }
 
-  setRunJobsError(repo: RepoRef, runId: number | string, error: string): void {
+  /**
+   * Sets the job cache to error state for a run.
+   * @param repo - Repository reference
+   * @param runId - Run ID
+   * @param error - Error message
+   * @param runNode - Optional: the actual expanded RunNode instance for proper refresh
+   */
+  setRunJobsError(repo: RepoRef, runId: number | string, error: string, runNode?: RunNode): void {
     const state = this.repos.get(repoKey(repo));
     if (state) {
       const previousCache = state.jobs.get(runId);
@@ -485,12 +507,13 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       if (run) {
         const isActive = run.status === 'running' || run.status === 'queued';
         if (isActive || wasUnloadedOrLoading) {
-          const runNode: RunNode = {
-            type: 'run',
+          // Use the provided runNode instance if available, otherwise create a new one
+          const nodeToRefresh = runNode ?? {
+            type: 'run' as const,
             repo,
             run
           };
-          this.refresh(runNode);
+          this.refresh(nodeToRefresh);
         }
       }
     }
@@ -560,11 +583,44 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
   }
 
   /**
+   * Gets run refs for expanded runs that need jobs to be loaded.
+   * Returns runs where:
+   * - The run node is currently expanded
+   * - Job cache is unloaded, loading, or error state
+   */
+  getExpandedRunRefsNeedingJobs(): RunRef[] {
+    const result: RunRef[] = [];
+    
+    for (const state of this.repos.values()) {
+      for (const run of state.runs) {
+        // Check if this run is expanded
+        const runId = `run-${state.repo.owner}-${state.repo.name}-${run.id}`;
+        if (!this.expandedNodeIds.has(runId)) {
+          continue;
+        }
+        
+        // Check if jobs need to be loaded
+        const jobCache = state.jobs.get(run.id);
+        const needsJobs = !jobCache || 
+          jobCache.state === 'unloaded' || 
+          jobCache.state === 'loading' || 
+          jobCache.state === 'error';
+        
+        if (needsJobs) {
+          result.push(toRunRef(state.repo, run));
+        }
+      }
+    }
+    
+    return result;
+  }
+
+  /**
    * Finds a node by its ID. Used to restore expansion state.
    */
   findNodeById(id: string): ActionsNode | undefined {
     // Check repo nodes
-    for (const [key, state] of this.repos.entries()) {
+    for (const [, state] of this.repos.entries()) {
       const repoId = `repo-${state.repo.owner}-${state.repo.name}`;
       if (repoId === id) {
         return {
