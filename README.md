@@ -34,9 +34,11 @@ Create, update, and delete repository secrets and variables without leaving VS C
 ### Smart Polling
 The extension adapts its refresh rate based on activity:
 - **15 seconds** when workflows are running (configurable)
-- **60 seconds** when idle (configurable)
+- **15 seconds** when idle (configurable)
 
-**Targeted Refresh:** Only active (running/queued) runs are refreshed during polling. Completed runs are final and never cause UI updates, ensuring your tree expansion state is preserved and reducing unnecessary API calls.
+**Targeted Refresh:** Run status is always refreshed, but job and step details are only fetched for expanded runs (or runs that already have jobs loaded). Active expanded runs refresh job/step data every 5 seconds until completion.
+
+**Log Streaming:** Job and step logs poll every 5 seconds while streaming.
 
 ### Status Bar Integration
 A subtle status bar indicator shows you the current state of your workflows at a glance.
@@ -96,7 +98,7 @@ Manage your extension configuration:
 | `giteaActions.baseUrl` | — | Base URL of your Gitea instance |
 | `giteaActions.discovery.mode` | `workspace` | How to discover repos (see below) |
 | `giteaActions.refresh.runningIntervalSeconds` | `15` | Polling interval when runs are active |
-| `giteaActions.refresh.idleIntervalSeconds` | `60` | Polling interval when idle |
+| `giteaActions.refresh.idleIntervalSeconds` | `15` | Polling interval when idle |
 | `giteaActions.maxRunsPerRepo` | `20` | Maximum runs to fetch per repository |
 | `giteaActions.maxJobsPerRun` | `50` | Maximum jobs to fetch per run |
 | `giteaActions.tls.insecureSkipVerify` | `false` | Skip TLS verification (not recommended) |

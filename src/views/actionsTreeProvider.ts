@@ -374,15 +374,12 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     const membershipChanged = detectMembershipChange(oldRunIds, newRunIds);
     const orderChanged = detectOrderChange(oldRuns, runs);
     
-    // Find active runs whose status/data changed
-    const changedActiveRuns: WorkflowRun[] = [];
+    // Find runs whose status/data changed
+    const changedRuns: WorkflowRun[] = [];
     for (const newRun of runs) {
-      const isActive = newRun.status === 'running' || newRun.status === 'queued';
-      if (isActive) {
-        const oldRun = oldRunMap.get(String(newRun.id));
-        if (!oldRun || hasRunChanged(oldRun, newRun)) {
-          changedActiveRuns.push(newRun);
-        }
+      const oldRun = oldRunMap.get(String(newRun.id));
+      if (!oldRun || hasRunChanged(oldRun, newRun)) {
+        changedRuns.push(newRun);
       }
     }
     
@@ -405,9 +402,9 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
         repo
       };
       this.refresh(repoNode);
-    } else if (changedActiveRuns.length > 0) {
-      // Only active runs changed - refresh only those run nodes
-      for (const run of changedActiveRuns) {
+    } else if (changedRuns.length > 0) {
+      // Only changed runs - refresh those run nodes
+      for (const run of changedRuns) {
         const runNode: RunNode = {
           type: 'run',
           repo,
@@ -526,6 +523,17 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     this.refresh();
   }
 
+  resetJobCaches(): void {
+    for (const state of this.repos.values()) {
+      const nextJobs = new Map<string | number, JobCache>();
+      for (const run of state.runs) {
+        nextJobs.set(run.id, { state: 'unloaded', jobs: [] });
+      }
+      state.jobs = nextJobs;
+      state.inFlightJobs.clear();
+    }
+  }
+
   setConfigErrors(errors: Array<{ message: string; action: 'configureBaseUrl' | 'setToken' }>): void {
     this.configErrors = errors;
     this.refresh();
@@ -545,6 +553,19 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
   hasRepoBeenLoaded(repo: RepoRef): boolean {
     const state = this.repos.get(repoKey(repo));
     return state ? state.runs.length > 0 || state.state === 'idle' : false;
+  }
+
+  shouldPollJobs(repo: RepoRef, runId: number | string): boolean {
+    const state = this.repos.get(repoKey(repo));
+    if (!state) {
+      return false;
+    }
+    const runNodeId = `run-${repo.owner}-${repo.name}-${runId}`;
+    if (this.expandedNodeIds.has(runNodeId)) {
+      return true;
+    }
+    const cache = state.jobs.get(runId);
+    return !!cache && cache.state !== 'unloaded';
   }
 
   refresh(node?: ActionsNode): void {
