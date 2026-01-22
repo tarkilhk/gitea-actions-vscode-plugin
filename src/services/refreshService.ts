@@ -30,6 +30,8 @@ export type RefreshServiceState = {
   inFlightJobFetch: Map<string, Promise<Job[] | undefined>>;
   jobRefreshTimers: Map<string, NodeJS.Timeout>;
   jobStepsCache: Map<string, Step[]>;
+  /** Tracks the last known repo keys to detect changes */
+  lastRepoKeys?: Set<string>;
 };
 
 let refreshInFlight: Promise<boolean> | undefined;
@@ -142,14 +144,23 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
       state.pinnedProvider.setConfigErrors(configErrors);
     }
     state.lastRunsByRepo.clear();
+    state.lastRepoKeys = undefined;
     updateStatusBar('Gitea: not configured');
     return false;
   }
 
   const settings = getSettings();
   const repos = await resolveRepos(api, state, settings);
-  state.workspaceProvider.setRepositories(repos);
-  state.pinnedProvider.setRepositories(repos);
+  
+  // Only call setRepositories when the repo list actually changes
+  const newRepoKeys = new Set(repos.map(r => repoKey(r)));
+  const reposChanged = hasRepoListChanged(state.lastRepoKeys, newRepoKeys);
+  if (reposChanged) {
+    state.workspaceProvider.setRepositories(repos);
+    state.pinnedProvider.setRepositories(repos);
+    state.lastRepoKeys = newRepoKeys;
+    logDebug(`Repo list changed, updated tree providers`);
+  }
   
   // Update settings view with the first available repo
   state.settingsProvider.setTokenStatus(!!state.cachedToken);
@@ -162,8 +173,14 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
   let anyRunning = false;
 
   await runWithLimit(repos, MAX_CONCURRENT_REPOS, async (repo) => {
-    state.workspaceProvider.setRepoLoading(repo);
-    state.pinnedProvider.setRepoLoading(repo);
+    // Only set loading state if this is a new repo or repo is in error state
+    const key = repoKey(repo);
+    const needsLoadingIndicator = !state.lastRepoKeys?.has(key) || 
+      state.workspaceProvider.isRepoInErrorState(repo);
+    if (needsLoadingIndicator) {
+      state.workspaceProvider.setRepoLoading(repo);
+      state.pinnedProvider.setRepoLoading(repo);
+    }
     try {
       const runStart = Date.now();
       const workflowMap = await refreshWorkflows(api, repo, state);
@@ -178,12 +195,14 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
       });
       state.workspaceProvider.updateRuns(repo, limitedRuns);
       state.pinnedProvider.updateRuns(repo, limitedRuns);
-      state.lastRunsByRepo.set(repoKey(repo), limitedRuns);
+      state.lastRunsByRepo.set(key, limitedRuns);
       logDebug(`Runs fetched for ${repo.owner}/${repo.name}: ${limitedRuns.length} in ${Date.now() - runStart}ms`);
       if (limitedRuns.some((r) => isRunning(r.status))) {
         anyRunning = true;
       }
-      await runWithLimit(limitedRuns, MAX_CONCURRENT_JOBS, async (run) => {
+      // Only fetch jobs for active runs during polling (completed runs are final)
+      const activeRuns = limitedRuns.filter((r) => isRunning(r.status));
+      await runWithLimit(activeRuns, MAX_CONCURRENT_JOBS, async (run) => {
         await fetchJobsForRun(toRunRef(repo, run), state, settings);
       });
     } catch (error) {
@@ -197,6 +216,24 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
   logDebug(`Refresh cycle completed in ${Date.now() - refreshStarted}ms`);
   updateStatusBar(undefined, state.lastRunsByRepo);
   return anyRunning;
+}
+
+/**
+ * Checks if the repo list has changed by comparing key sets.
+ */
+export function hasRepoListChanged(oldKeys: Set<string> | undefined, newKeys: Set<string>): boolean {
+  if (!oldKeys) {
+    return true; // First load
+  }
+  if (oldKeys.size !== newKeys.size) {
+    return true;
+  }
+  for (const key of newKeys) {
+    if (!oldKeys.has(key)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function resolveRepos(

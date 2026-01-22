@@ -36,6 +36,8 @@ The extension adapts its refresh rate based on activity:
 - **15 seconds** when workflows are running (configurable)
 - **60 seconds** when idle (configurable)
 
+**Targeted Refresh:** Only active (running/queued) runs are refreshed during polling. Completed runs are final and never cause UI updates, ensuring your tree expansion state is preserved and reducing unnecessary API calls.
+
 ### Status Bar Integration
 A subtle status bar indicator shows you the current state of your workflows at a glance.
 

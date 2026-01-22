@@ -303,10 +303,6 @@ async function manualRefresh(): Promise<void> {
 }
 
 async function doRefresh(): Promise<boolean> {
-  // Save expansion state before refresh
-  const workspaceExpandedIds = workspaceProvider.getExpandedNodeIds();
-  const pinnedExpandedIds = pinnedProvider.getExpandedNodeIds();
-  
   const state = getRefreshState();
   const result = await refreshAll(state);
   // Sync state back
@@ -319,45 +315,11 @@ async function doRefresh(): Promise<boolean> {
     void refreshVariablesForRepo(repo, createVariableContext());
   }
   
-  // Restore expansion state after refresh
-  // Use setTimeout to ensure tree has been rebuilt
-  setTimeout(() => {
-    restoreExpansionState(workspaceTree, workspaceProvider, workspaceExpandedIds);
-    restoreExpansionState(pinnedTree, pinnedProvider, pinnedExpandedIds);
-  }, 100);
+  // Note: Expansion state is preserved automatically by VS Code through stable node IDs.
+  // We track expansion state in the provider for potential future use, but we don't
+  // actively restore it via reveal() to avoid focus shifts when the user is working elsewhere.
   
   return result;
-}
-
-/**
- * Restores expansion state for a tree view after refresh.
- * Uses reveal() with expand option to restore each previously expanded node.
- */
-function restoreExpansionState(
-  treeView: vscode.TreeView<ActionsNode>,
-  provider: ActionsTreeProvider,
-  expandedIds: Set<string>
-): void {
-  if (expandedIds.size === 0) {
-    return;
-  }
-  
-  // Restore expansion state for each previously expanded node
-  // We use reveal() which requires getParent() to be implemented
-  for (const id of expandedIds) {
-    const node = provider.findNodeById(id);
-    if (node) {
-      // Use reveal with expand option to restore expansion state
-      // select: false and focus: false prevent unwanted UI changes
-      // Thenable doesn't have catch, so we use then with no-op error handler
-      void treeView.reveal(node, { expand: true, select: false, focus: false }).then(
-        () => {},
-        () => {
-          // Ignore errors if node is no longer available (e.g., removed during refresh)
-        }
-      );
-    }
-  }
 }
 
 function scheduleRefresh(): void {
