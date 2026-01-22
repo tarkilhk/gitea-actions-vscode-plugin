@@ -72,7 +72,9 @@ export const window = {
   }),
   createTreeView: () => ({
     onDidExpandElement: { event: () => ({ dispose: () => {} }) },
+    onDidCollapseElement: { event: () => ({ dispose: () => {} }) },
     onDidChangeVisibility: { event: () => ({ dispose: () => {} }) },
+    reveal: async () => {},
     dispose: () => {}
   }),
   createOutputChannel: () => ({

@@ -27,6 +27,9 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
 
   private readonly repos = new Map<RepoKey, RepoState>();
   private configErrors: Array<{ message: string; action: 'configureBaseUrl' | 'setToken' }> = [];
+  
+  // Track expanded nodes to preserve state across refreshes
+  private readonly expandedNodeIds = new Set<string>();
 
   constructor(private readonly mode: ProviderMode = 'runs') {}
 
@@ -210,10 +213,59 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     return [];
   }
 
+  getParent(element: ActionsNode): vscode.ProviderResult<ActionsNode> {
+    // Return parent node for reveal() API to work
+    if (element.type === 'run') {
+      // Run nodes are children of repo nodes (in runs mode) or workflow group nodes (in workflows mode)
+      if (this.mode === 'runs') {
+        return {
+          type: 'repo',
+          repo: element.repo
+        };
+      } else {
+        // In workflows mode, find the workflow group
+        const workflowName = element.run.workflowName ?? element.run.name;
+        return {
+          type: 'workflowGroup',
+          name: workflowName,
+          runs: [],
+          repo: element.repo
+        };
+      }
+    }
+    if (element.type === 'job') {
+      // Job nodes are children of run nodes
+      const repoState = this.repos.get(repoKey(element.runRef.repo));
+      if (repoState) {
+        const run = repoState.runs.find((r) => String(r.id) === String(element.runRef.id));
+        if (run) {
+          return {
+            type: 'run',
+            repo: element.runRef.repo,
+            run
+          };
+        }
+      }
+    }
+    if (element.type === 'step') {
+      // Step nodes are children of job nodes
+      return {
+        type: 'job',
+        runRef: element.runRef,
+        job: element.job,
+        jobIndex: element.jobIndex
+      };
+    }
+    // Repo nodes, workflow group nodes, and message nodes have no parent (they're root-level)
+    return null;
+  }
+
   setRepositories(repos: RepoRef[]): void {
     const next = new Map<RepoKey, RepoState>();
+    const nextRepoKeys = new Set<RepoKey>();
     for (const repo of repos) {
       const key = repoKey(repo);
+      nextRepoKeys.add(key);
       const existing = this.repos.get(key);
       next.set(key, {
         repo,
@@ -224,6 +276,32 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
         error: existing?.error
       });
     }
+    
+    // Clean up expansion state for removed repos
+    const currentRepoKeys = new Set(this.repos.keys());
+    for (const removedKey of currentRepoKeys) {
+      if (!nextRepoKeys.has(removedKey)) {
+        // Remove all expanded node IDs for this repo
+        const repoState = this.repos.get(removedKey);
+        if (repoState) {
+          const repoId = `repo-${repoState.repo.owner}-${repoState.repo.name}`;
+          this.expandedNodeIds.delete(repoId);
+          // Also remove run and job IDs for this repo
+          for (const run of repoState.runs) {
+            const runId = `run-${repoState.repo.owner}-${repoState.repo.name}-${run.id}`;
+            this.expandedNodeIds.delete(runId);
+            const jobCache = repoState.jobs.get(run.id);
+            if (jobCache && jobCache.jobs) {
+              for (const job of jobCache.jobs) {
+                const jobId = `job-${repoState.repo.owner}-${repoState.repo.name}-${run.id}-${job.id}`;
+                this.expandedNodeIds.delete(jobId);
+              }
+            }
+          }
+        }
+      }
+    }
+    
     this.repos.clear();
     next.forEach((value, key) => this.repos.set(key, value));
     this.configErrors = [];
@@ -252,6 +330,25 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
   updateRuns(repo: RepoRef, runs: WorkflowRun[]): void {
     const state = this.repos.get(repoKey(repo));
     if (state) {
+      // Clean up expansion state for removed runs and their jobs
+      const currentRunIds = new Set(runs.map(r => String(r.id)));
+      for (const oldRun of state.runs) {
+        if (!currentRunIds.has(String(oldRun.id))) {
+          // Remove expansion state for the run
+          const runId = `run-${repo.owner}-${repo.name}-${oldRun.id}`;
+          this.expandedNodeIds.delete(runId);
+          
+          // Remove expansion state for all jobs in this run
+          const jobCache = state.jobs.get(oldRun.id);
+          if (jobCache && jobCache.jobs) {
+            for (const job of jobCache.jobs) {
+              const jobId = `job-${repo.owner}-${repo.name}-${oldRun.id}-${job.id}`;
+              this.expandedNodeIds.delete(jobId);
+            }
+          }
+        }
+      }
+      
       state.runs = runs;
       state.state = 'idle';
       state.error = undefined;
@@ -329,6 +426,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
   clear(): void {
     this.repos.clear();
     this.configErrors = [];
+    this.expandedNodeIds.clear();
     this.refresh();
   }
 
@@ -343,6 +441,92 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       return;
     }
     this.onDidChangeTreeDataEmitter.fire(node);
+  }
+
+  /**
+   * Marks a node as expanded. Called by the tree view when a node is expanded.
+   */
+  markExpanded(node: ActionsNode): void {
+    const treeItem = toTreeItem(node);
+    if (treeItem.id) {
+      this.expandedNodeIds.add(treeItem.id);
+    }
+  }
+
+  /**
+   * Marks a node as collapsed. Called by the tree view when a node is collapsed.
+   */
+  markCollapsed(node: ActionsNode): void {
+    const treeItem = toTreeItem(node);
+    if (treeItem.id) {
+      this.expandedNodeIds.delete(treeItem.id);
+    }
+  }
+
+  /**
+   * Gets the set of expanded node IDs. Used to restore expansion state after refresh.
+   */
+  getExpandedNodeIds(): Set<string> {
+    return new Set(this.expandedNodeIds);
+  }
+
+  /**
+   * Finds a node by its ID. Used to restore expansion state.
+   */
+  findNodeById(id: string): ActionsNode | undefined {
+    // Check repo nodes
+    for (const [key, state] of this.repos.entries()) {
+      const repoId = `repo-${state.repo.owner}-${state.repo.name}`;
+      if (repoId === id) {
+        return {
+          type: 'repo',
+          repo: state.repo,
+          expanded: true
+        };
+      }
+
+      // Check run nodes
+      for (const run of state.runs) {
+        const runId = `run-${state.repo.owner}-${state.repo.name}-${run.id}`;
+        if (runId === id) {
+          return {
+            type: 'run',
+            repo: state.repo,
+            run
+          };
+        }
+
+        // Check job nodes
+        const jobCache = state.jobs.get(run.id);
+        if (jobCache && jobCache.state === 'idle' && jobCache.jobs) {
+          for (let jobIndex = 0; jobIndex < jobCache.jobs.length; jobIndex++) {
+            const job = jobCache.jobs[jobIndex];
+            const jobId = `job-${state.repo.owner}-${state.repo.name}-${run.id}-${job.id}`;
+            if (jobId === id) {
+              return {
+                type: 'job',
+                runRef: toRunRef(state.repo, run),
+                job,
+                jobIndex
+              };
+            }
+          }
+        }
+      }
+    }
+
+    // Check workflow group nodes (for workflows mode)
+    if (this.mode === 'workflows') {
+      const groups = this.buildWorkflowGroups();
+      for (const group of groups) {
+        const groupId = `workflow-group-${group.repo.owner}-${group.repo.name}-${group.name}`;
+        if (groupId === id) {
+          return group;
+        }
+      }
+    }
+
+    return undefined;
   }
 
   private collectRuns(): { repo: RepoRef; run: WorkflowRun }[] {
