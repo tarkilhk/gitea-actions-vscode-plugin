@@ -178,7 +178,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     createVariable: (node) => createVariable(node, createVariableContext()),
     updateVariable: (node) => updateVariable(node, createVariableContext()),
     deleteVariable: (node) => deleteVariable(node, createVariableContext()),
-    openBaseUrlSettings: () => openBaseUrlSettings()
+    openBaseUrlSettings: () => openBaseUrlSettings(),
+    openSettings: () => openSettings()
   });
 
   // Configuration change listener
@@ -324,6 +325,10 @@ function createLogStreamContext() {
 
 // Helper functions
 async function openBaseUrlSettings(): Promise<void> {
+  await vscode.commands.executeCommand('workbench.action.openSettings', '@giteaActions');
+}
+
+async function openSettings(): Promise<void> {
   await vscode.commands.executeCommand('workbench.action.openSettings', '@giteaActions');
 }
 

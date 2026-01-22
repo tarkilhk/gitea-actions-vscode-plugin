@@ -108,6 +108,10 @@ export class SettingsTreeProvider implements vscode.TreeDataProvider<ActionsNode
         {
           type: 'configAction',
           action: 'testConnection'
+        } satisfies ConfigActionNode,
+        {
+          type: 'configAction',
+          action: 'openSettings'
         } satisfies ConfigActionNode
       ];
     }
