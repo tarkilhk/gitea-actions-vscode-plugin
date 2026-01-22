@@ -182,7 +182,7 @@ describe('ActionsTreeProvider - Expansion State Preservation', () => {
       run.workflowName = 'My Workflow';
       workflowsProvider.updateRuns(testRepo, [run]);
 
-      const node = workflowsProvider.findNodeById('workflow-group-test-test-repo-My Workflow');
+      const node = workflowsProvider.findNodeById('workflow-group-test-test-repo-My Workflow - test/test-repo');
       expect(node).toBeDefined();
       expect(node?.type).toBe('workflowGroup');
     });

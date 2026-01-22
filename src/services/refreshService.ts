@@ -50,6 +50,13 @@ export function resetRefreshCaches(state: RefreshServiceState): void {
   state.lastRepoKeys = undefined;
 }
 
+export function cancelJobRefreshTimers(state: RefreshServiceState): void {
+  for (const timer of state.jobRefreshTimers.values()) {
+    clearTimeout(timer);
+  }
+  state.jobRefreshTimers.clear();
+}
+
 /**
  * Gets configuration errors (missing base URL or token).
  */
@@ -138,12 +145,20 @@ export async function refreshAll(state: RefreshServiceState): Promise<boolean> {
     return refreshInFlight;
   }
 
-  const promise = doRefreshAll(state);
+  const promise = (async () => {
+    let result: boolean | undefined;
+    try {
+      result = await doRefreshAll(state);
+      return result;
+    } finally {
+      refreshInFlight = undefined;
+      if (result !== undefined) {
+        state.workflowNameCache.clear();
+      }
+    }
+  })();
   refreshInFlight = promise;
-  const result = await promise;
-  refreshInFlight = undefined;
-  state.workflowNameCache.clear();
-  return result;
+  return promise;
 }
 
 async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {

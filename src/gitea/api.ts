@@ -2,6 +2,8 @@ import { GiteaClient } from './client';
 import { Job, RepoRef, WorkflowRun, Step } from './models';
 import { normalizeConclusion, normalizeStatus } from '../util/status';
 
+const CONTENT_TYPE_HEADER = 'content-type';
+
 export type Secret = {
   name: string;
   description: string;
@@ -217,7 +219,7 @@ export class GiteaApi {
     const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/secrets/${encodeURIComponent(secretName)}`;
     const res = await this.client.request(path, {
       method: 'PUT',
-      headers: { 'content-type': 'application/json' },
+      headers: { [CONTENT_TYPE_HEADER]: 'application/json' },
       body: JSON.stringify({ data, description: description ?? '' })
     } as RequestInit);
     if (!res.ok) {
@@ -255,7 +257,7 @@ export class GiteaApi {
     const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/variables/${encodeURIComponent(variableName)}`;
     const res = await this.client.request(path, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { [CONTENT_TYPE_HEADER]: 'application/json' },
       body: JSON.stringify({ value, description: description ?? '' })
     } as RequestInit);
     if (!res.ok) {
@@ -268,7 +270,7 @@ export class GiteaApi {
     const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/variables/${encodeURIComponent(variableName)}`;
     const res = await this.client.request(path, {
       method: 'PUT',
-      headers: { 'content-type': 'application/json' },
+      headers: { [CONTENT_TYPE_HEADER]: 'application/json' },
       body: JSON.stringify({ value, description: description ?? '', name: newName ?? '' })
     } as RequestInit);
     if (!res.ok) {

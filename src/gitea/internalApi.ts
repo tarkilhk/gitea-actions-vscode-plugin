@@ -17,6 +17,10 @@ import { RepoRef, Step, StepLog } from './models';
 import { normalizeConclusion, normalizeStatus } from '../util/status';
 import { logDebug, logWarn } from '../util/logging';
 
+const CONTENT_TYPE_HEADER = 'content-type';
+const X_REQUESTED_WITH_HEADER = 'x-requested-with';
+const X_CSRF_TOKEN_HEADER = 'x-csrf-token';
+
 /**
  * Response from the internal job details endpoint.
  */
@@ -392,23 +396,18 @@ export class GiteaInternalApi {
       : `${this.client.baseUrl}${path}`;
 
     const headers: Record<string, string> = {
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      'content-type': 'application/json',
+      [CONTENT_TYPE_HEADER]: 'application/json',
       // Accept JSON response (must be set explicitly since client respects existing Accept headers now)
-      // eslint-disable-next-line @typescript-eslint/naming-convention
       'accept': 'application/json',
       // Some servers check Referer for CSRF protection
-      // eslint-disable-next-line @typescript-eslint/naming-convention
       'referer': refererPath,
       // Mark as AJAX request
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      'x-requested-with': 'XMLHttpRequest'
+      [X_REQUESTED_WITH_HEADER]: 'XMLHttpRequest'
     };
 
     // Add CSRF headers if available
     if (this.csrfToken) {
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      headers['x-csrf-token'] = this.csrfToken;
+      headers[X_CSRF_TOKEN_HEADER] = this.csrfToken;
     }
     if (this.allCookies) {
       headers['cookie'] = this.allCookies;
@@ -435,12 +434,10 @@ export class GiteaInternalApi {
         
         // Retry with fresh token
         const retryHeaders: Record<string, string> = {
-          // eslint-disable-next-line @typescript-eslint/naming-convention
-          'content-type': 'application/json'
+          [CONTENT_TYPE_HEADER]: 'application/json'
         };
         if (this.csrfToken) {
-          // eslint-disable-next-line @typescript-eslint/naming-convention
-          retryHeaders['x-csrf-token'] = this.csrfToken;
+          retryHeaders[X_CSRF_TOKEN_HEADER] = this.csrfToken;
         }
         if (this.allCookies) {
           retryHeaders['cookie'] = this.allCookies;
