@@ -1,3 +1,9 @@
+## [2.1.6] - 2026-01-22
+
+### ✨ Added
+
+- preserve tree view expansion state across refreshes (b60c1b0)
+
 ## [2.1.5] - 2026-01-15
 
 ### ✨ Added
