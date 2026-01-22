@@ -1,3 +1,9 @@
+## [2.2.3] - 2026-01-22
+
+### 🐛 Fixed
+
+- reduce idle polling interval and improve job cache management (d43b0ec)
+
 ## [2.2.2] - 2026-01-22
 
 ### ✨ Added
