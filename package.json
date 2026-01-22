@@ -53,16 +53,13 @@
       "properties": {
         "giteaActions.baseUrl": {
           "type": "string",
+          "order": 1,
           "default": "",
           "description": "Base URL of your Gitea instance (e.g. http://localhost:3000)."
         },
-        "giteaActions.tls.insecureSkipVerify": {
-          "type": "boolean",
-          "default": false,
-          "description": "Skip TLS certificate verification (not recommended)."
-        },
         "giteaActions.discovery.mode": {
           "type": "string",
+          "order": 2,
           "enum": [
             "workspace",
             "allAccessible"
@@ -70,41 +67,57 @@
           "default": "workspace",
           "description": "How repositories are discovered: from workspace remotes or all accessible repos via API."
         },
-        "giteaActions.refresh.runningIntervalSeconds": {
+        "giteaActions.maxJobsPerRun": {
           "type": "number",
-          "default": 15,
-          "minimum": 5,
-          "description": "Polling interval (seconds) while runs are queued or running."
-        },
-        "giteaActions.refresh.idleIntervalSeconds": {
-          "type": "number",
-          "default": 15,
-          "minimum": 10,
-          "description": "Polling interval (seconds) while idle."
-        },
-        "giteaActions.refresh.jobsIntervalSeconds": {
-          "type": "number",
-          "default": 5,
-          "minimum": 2,
-          "description": "Polling interval (seconds) for job/step refresh while runs are active and expanded."
-        },
-        "giteaActions.logs.pollIntervalSeconds": {
-          "type": "number",
-          "default": 5,
-          "minimum": 2,
-          "description": "Polling interval (seconds) for job and step log streaming."
+          "order": 3,
+          "default": 50,
+          "minimum": 1,
+          "description": "Maximum number of jobs to request per workflow run."
         },
         "giteaActions.maxRunsPerRepo": {
           "type": "number",
+          "order": 4,
           "default": 20,
           "minimum": 1,
           "description": "Maximum number of recent runs to fetch per repository."
         },
-        "giteaActions.maxJobsPerRun": {
+        "giteaActions.refresh.idleIntervalSeconds": {
           "type": "number",
-          "default": 50,
-          "minimum": 1,
-          "description": "Maximum number of jobs to request per workflow run."
+          "title": "Runs (Idle) — Refresh Interval (seconds)",
+          "order": 5,
+          "default": 15,
+          "minimum": 10,
+          "description": "How often to refresh the run list when no runs are active. Polling pauses when the window is unfocused and all Gitea views are hidden."
+        },
+        "giteaActions.refresh.runningIntervalSeconds": {
+          "type": "number",
+          "title": "Runs (Active) — Refresh Interval (seconds)",
+          "order": 6,
+          "default": 15,
+          "minimum": 5,
+          "description": "How often to refresh the run list while runs are queued or running."
+        },
+        "giteaActions.refresh.jobsIntervalSeconds": {
+          "type": "number",
+          "title": "Jobs & Steps — Refresh Interval (seconds)",
+          "order": 7,
+          "default": 5,
+          "minimum": 2,
+          "description": "How often to refresh jobs and steps for expanded, active runs."
+        },
+        "giteaActions.logs.pollIntervalSeconds": {
+          "type": "number",
+          "title": "Logs — Poll Interval (seconds)",
+          "order": 8,
+          "default": 5,
+          "minimum": 2,
+          "description": "How often to poll job and step logs while streaming."
+        },
+        "giteaActions.tls.insecureSkipVerify": {
+          "type": "boolean",
+          "order": 9,
+          "default": false,
+          "description": "Skip TLS certificate verification (not recommended)."
         }
       }
     },

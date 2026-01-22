@@ -281,7 +281,7 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
       } else if (node.action === 'openSettings') {
         const item = new vscode.TreeItem('Open Settings', vscode.TreeItemCollapsibleState.None);
         item.id = `config-action-${node.action}`;
-        item.iconPath = new vscode.ThemeIcon('settings-gear');
+        item.iconPath = settingsIcon;
         item.contextValue = 'giteaConfigAction';
         item.command = {
           command: 'giteaActions.openSettings',
