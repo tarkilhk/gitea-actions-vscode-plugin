@@ -1,3 +1,10 @@
+## [2.3.1] - 2026-01-22
+
+### ✨ Added
+
+- update Gitea Actions configuration options and improve README (1650213)
+- add 'Open Settings' command to Gitea Actions (53a9016)
+
 ## [2.3.0] - 2026-01-22
 
 ### ✨ Added
