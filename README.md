@@ -99,8 +99,8 @@ Manage your extension configuration:
 |---------|---------|-------------|
 | `giteaActions.baseUrl` | — | Base URL of your Gitea instance |
 | `giteaActions.discovery.mode` | `workspace` | How to discover repos (see below) |
-| `giteaActions.refresh.runningIntervalSeconds` | `15` | Polling interval when runs are active |
 | `giteaActions.refresh.idleIntervalSeconds` | `15` | Polling interval when idle |
+| `giteaActions.refresh.runningIntervalSeconds` | `15` | Polling interval when runs are active |
 | `giteaActions.refresh.jobsIntervalSeconds` | `5` | Polling interval for active run job/step refresh |
 | `giteaActions.logs.pollIntervalSeconds` | `5` | Polling interval for job/step log streaming |
 | `giteaActions.maxRunsPerRepo` | `20` | Maximum runs to fetch per repository |
