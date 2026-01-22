@@ -1,3 +1,9 @@
+## [2.3.2] - 2026-01-22
+
+### ✨ Added
+
+- implement refresh logic for expanded runs (521df44)
+
 ## [2.3.1] - 2026-01-22
 
 ### ✨ Added
