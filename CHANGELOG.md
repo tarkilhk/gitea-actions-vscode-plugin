@@ -1,3 +1,9 @@
+## [2.3.3] - 2026-01-22
+
+### ✨ Added
+
+- enhance ActionsTreeProvider with improved node management (04473b9)
+
 ## [2.3.2] - 2026-01-22
 
 ### ✨ Added
