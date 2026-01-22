@@ -335,6 +335,7 @@ async function openSettings(): Promise<void> {
 async function manualRefresh(): Promise<void> {
   resetRefreshCaches(getRefreshState());
   await doRefresh();
+  await refreshExpandedRuns();
 }
 
 async function doRefresh(): Promise<boolean> {
@@ -373,6 +374,21 @@ async function handleExpand(element: ActionsNode): Promise<void> {
     // Pass the actual expanded RunNode instance for proper UI refresh
     await fetchJobsForRun(toRunRef(element.repo, element.run), state, settings, { runNode: element });
   }
+}
+
+async function refreshExpandedRuns(): Promise<void> {
+  const state = getRefreshState();
+  const workspaceRuns = state.workspaceProvider.getExpandedRunRefsNeedingJobs();
+  const pinnedRuns = state.pinnedProvider.getExpandedRunRefsNeedingJobs();
+  if (!workspaceRuns.length && !pinnedRuns.length) {
+    return;
+  }
+  const unique = new Map<string, RunRef>();
+  for (const runRef of [...workspaceRuns, ...pinnedRuns]) {
+    const key = `${runRef.repo.owner}/${runRef.repo.name}#${runRef.id}`;
+    unique.set(key, runRef);
+  }
+  await Promise.all(Array.from(unique.values()).map((runRef) => fetchJobsForRun(runRef, state, settings)));
 }
 
 function shouldPoll(): boolean {
