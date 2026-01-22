@@ -1,3 +1,9 @@
+## [2.2.2] - 2026-01-22
+
+### ✨ Added
+
+- enhance job fetching for expanded runs (45e40e3)
+
 ## [2.2.1] - 2026-01-22
 
 - Support Antigravity for @jacobleft
