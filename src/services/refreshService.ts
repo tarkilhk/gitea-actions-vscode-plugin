@@ -8,6 +8,7 @@ import { getToken } from '../config/secrets';
 import { discoverWorkspaceRepos } from '../gitea/discovery';
 import { ActionsTreeProvider } from '../views/actionsTreeProvider';
 import { SettingsTreeProvider } from '../views/settingsTreeProvider';
+import { RunNode } from '../views/nodes';
 import { logDebug, logWarn } from '../util/logging';
 import { JOBS_TIMEOUT_MS, JOB_REFRESH_DELAY_MS, MAX_CONCURRENT_REPOS, MAX_CONCURRENT_JOBS } from '../config/constants';
 import { isRunning, updateStatusBar } from './statusBarService';
@@ -213,6 +214,27 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
     }
   });
 
+  // Retry loading jobs for expanded runs that still need them
+  // This handles cases where initial job load failed or user expanded while offline
+  const workspaceExpandedNeeding = state.workspaceProvider.getExpandedRunRefsNeedingJobs();
+  const pinnedExpandedNeeding = state.pinnedProvider.getExpandedRunRefsNeedingJobs();
+  
+  // Combine and deduplicate by run key
+  const expandedNeedingMap = new Map<string, RunRef>();
+  for (const runRef of [...workspaceExpandedNeeding, ...pinnedExpandedNeeding]) {
+    const key = `${runRef.repo.owner}/${runRef.repo.name}#${runRef.id}`;
+    if (!expandedNeedingMap.has(key)) {
+      expandedNeedingMap.set(key, runRef);
+    }
+  }
+  
+  if (expandedNeedingMap.size > 0) {
+    logDebug(`Retrying job fetch for ${expandedNeedingMap.size} expanded run(s) needing jobs`);
+    await runWithLimit(Array.from(expandedNeedingMap.values()), MAX_CONCURRENT_JOBS, async (runRef) => {
+      await fetchJobsForRun(runRef, state, settings);
+    });
+  }
+
   logDebug(`Refresh cycle completed in ${Date.now() - refreshStarted}ms`);
   updateStatusBar(undefined, state.lastRunsByRepo);
   return anyRunning;
@@ -302,13 +324,15 @@ async function refreshWorkflows(
  * @param runRef - Reference containing repo, run ID, and run number
  * @param state - Refresh service state
  * @param settings - Extension settings
- * @param options - Optional settings (refreshOnly skips loading indicator)
+ * @param options - Optional settings:
+ *   - refreshOnly: skips loading indicator (for polling refreshes)
+ *   - runNode: the actual expanded RunNode instance for proper UI refresh
  */
 export async function fetchJobsForRun(
   runRef: RunRef,
   state: RefreshServiceState,
   settings: ExtensionSettings,
-  options?: { refreshOnly?: boolean }
+  options?: { refreshOnly?: boolean; runNode?: RunNode }
 ): Promise<Job[] | undefined> {
   const { repo, id: runId } = runRef;
   const key = `${repoKey(repo)}#${runId}`;
@@ -317,8 +341,8 @@ export async function fetchJobsForRun(
   }
   const error = await getConfigError(state);
   if (error) {
-    state.workspaceProvider.setRunJobsError(repo, runId, error);
-    state.pinnedProvider.setRunJobsError(repo, runId, error);
+    state.workspaceProvider.setRunJobsError(repo, runId, error, options?.runNode);
+    state.pinnedProvider.setRunJobsError(repo, runId, error, options?.runNode);
     return;
   }
   const api = await ensureApi(state);
@@ -326,8 +350,8 @@ export async function fetchJobsForRun(
     return;
   }
   if (!options?.refreshOnly) {
-    state.workspaceProvider.setRunJobsLoading(repo, runId);
-    state.pinnedProvider.setRunJobsLoading(repo, runId);
+    state.workspaceProvider.setRunJobsLoading(repo, runId, options?.runNode);
+    state.pinnedProvider.setRunJobsLoading(repo, runId, options?.runNode);
   }
   const fetchPromise = (async () => {
     try {
@@ -341,15 +365,15 @@ export async function fetchJobsForRun(
       const elapsed = Date.now() - start;
       const hydrationNote = hydratedCount ? ` (steps fetched for ${hydratedCount} job${hydratedCount === 1 ? '' : 's'})` : '';
       logDebug(`Fetched ${jobs.length} jobs for ${repo.owner}/${repo.name} run ${runId} in ${elapsed}ms${hydrationNote}`);
-      state.workspaceProvider.updateJobs(repo, runId, jobs);
-      state.pinnedProvider.updateJobs(repo, runId, jobs);
+      state.workspaceProvider.updateJobs(repo, runId, jobs, options?.runNode);
+      state.pinnedProvider.updateJobs(repo, runId, jobs, options?.runNode);
       scheduleJobRefresh(runRef, jobs, state, settings);
       return jobs;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logWarn(`Failed to fetch jobs for ${repo.owner}/${repo.name} run ${runId}: ${message}`);
-      state.workspaceProvider.setRunJobsError(repo, runId, message);
-      state.pinnedProvider.setRunJobsError(repo, runId, message);
+      state.workspaceProvider.setRunJobsError(repo, runId, message, options?.runNode);
+      state.pinnedProvider.setRunJobsError(repo, runId, message, options?.runNode);
     } finally {
       state.inFlightJobFetch.delete(key);
     }

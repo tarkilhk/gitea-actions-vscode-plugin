@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ActionsTreeProvider } from './actionsTreeProvider';
 import { RepoRef, WorkflowRun, Job } from '../gitea/models';
-import { RepoNode, RunNode, JobNode, WorkflowGroupNode } from './nodes';
-import { toTreeItem } from './nodes';
+import { ActionsNode, RepoNode, RunNode, JobNode } from './nodes';
 
 describe('ActionsTreeProvider - Expansion State Preservation', () => {
   let provider: ActionsTreeProvider;
@@ -204,7 +203,7 @@ describe('ActionsTreeProvider - Expansion State Preservation', () => {
         run
       };
 
-      const parent = provider.getParent(runNode);
+      const parent = provider.getParent(runNode) as ActionsNode | null;
       expect(parent).toBeDefined();
       expect(parent?.type).toBe('repo');
     });
@@ -222,7 +221,7 @@ describe('ActionsTreeProvider - Expansion State Preservation', () => {
         jobIndex: 0
       };
 
-      const parent = provider.getParent(jobNode);
+      const parent = provider.getParent(jobNode) as ActionsNode | null;
       expect(parent).toBeDefined();
       expect(parent?.type).toBe('run');
     });
@@ -243,7 +242,7 @@ describe('ActionsTreeProvider - Expansion State Preservation', () => {
         stepIndex: 0
       };
 
-      const parent = provider.getParent(stepNode);
+      const parent = provider.getParent(stepNode) as ActionsNode | null;
       expect(parent).toBeDefined();
       expect(parent?.type).toBe('job');
     });
@@ -547,6 +546,112 @@ describe('ActionsTreeProvider - Targeted Refresh', () => {
       
       // Should no longer be in error state
       expect(provider.isRepoInErrorState(testRepo)).toBe(false);
+    });
+  });
+
+  describe('getExpandedRunRefsNeedingJobs', () => {
+    it('should return empty array when no runs are expanded', () => {
+      provider.setRepositories([testRepo]);
+      const run = createTestRun(123, 'test-workflow', 'completed');
+      provider.updateRuns(testRepo, [run]);
+      
+      const needingJobs = provider.getExpandedRunRefsNeedingJobs();
+      expect(needingJobs).toHaveLength(0);
+    });
+
+    it('should return expanded run with unloaded jobs', () => {
+      provider.setRepositories([testRepo]);
+      const run = createTestRun(123, 'test-workflow', 'completed');
+      provider.updateRuns(testRepo, [run]);
+      
+      // Mark run as expanded
+      const runNode: RunNode = { type: 'run', repo: testRepo, run };
+      provider.markExpanded(runNode);
+      
+      const needingJobs = provider.getExpandedRunRefsNeedingJobs();
+      expect(needingJobs).toHaveLength(1);
+      expect(needingJobs[0].id).toBe(123);
+    });
+
+    it('should return expanded run with loading jobs', () => {
+      provider.setRepositories([testRepo]);
+      const run = createTestRun(123, 'test-workflow', 'completed');
+      provider.updateRuns(testRepo, [run]);
+      
+      // Mark run as expanded
+      const runNode: RunNode = { type: 'run', repo: testRepo, run };
+      provider.markExpanded(runNode);
+      
+      // Set jobs to loading state
+      provider.setRunJobsLoading(testRepo, 123);
+      
+      const needingJobs = provider.getExpandedRunRefsNeedingJobs();
+      expect(needingJobs).toHaveLength(1);
+      expect(needingJobs[0].id).toBe(123);
+    });
+
+    it('should return expanded run with error jobs', () => {
+      provider.setRepositories([testRepo]);
+      const run = createTestRun(123, 'test-workflow', 'completed');
+      provider.updateRuns(testRepo, [run]);
+      
+      // Mark run as expanded
+      const runNode: RunNode = { type: 'run', repo: testRepo, run };
+      provider.markExpanded(runNode);
+      
+      // Set jobs to error state
+      provider.setRunJobsError(testRepo, 123, 'Test error');
+      
+      const needingJobs = provider.getExpandedRunRefsNeedingJobs();
+      expect(needingJobs).toHaveLength(1);
+      expect(needingJobs[0].id).toBe(123);
+    });
+
+    it('should NOT return expanded run with loaded jobs', () => {
+      provider.setRepositories([testRepo]);
+      const run = createTestRun(123, 'test-workflow', 'completed');
+      provider.updateRuns(testRepo, [run]);
+      
+      // Mark run as expanded
+      const runNode: RunNode = { type: 'run', repo: testRepo, run };
+      provider.markExpanded(runNode);
+      
+      // Load jobs successfully
+      const job = createTestJob(456, 'test-job');
+      provider.updateJobs(testRepo, 123, [job]);
+      
+      const needingJobs = provider.getExpandedRunRefsNeedingJobs();
+      expect(needingJobs).toHaveLength(0);
+    });
+
+    it('should NOT return collapsed run with unloaded jobs', () => {
+      provider.setRepositories([testRepo]);
+      const run = createTestRun(123, 'test-workflow', 'completed');
+      provider.updateRuns(testRepo, [run]);
+      
+      // Mark run as expanded then collapsed
+      const runNode: RunNode = { type: 'run', repo: testRepo, run };
+      provider.markExpanded(runNode);
+      provider.markCollapsed(runNode);
+      
+      const needingJobs = provider.getExpandedRunRefsNeedingJobs();
+      expect(needingJobs).toHaveLength(0);
+    });
+
+    it('should return multiple expanded runs needing jobs', () => {
+      provider.setRepositories([testRepo]);
+      const run1 = createTestRun(1, 'workflow1', 'completed');
+      const run2 = createTestRun(2, 'workflow2', 'completed');
+      provider.updateRuns(testRepo, [run1, run2]);
+      
+      // Mark both runs as expanded
+      const runNode1: RunNode = { type: 'run', repo: testRepo, run: run1 };
+      const runNode2: RunNode = { type: 'run', repo: testRepo, run: run2 };
+      provider.markExpanded(runNode1);
+      provider.markExpanded(runNode2);
+      
+      const needingJobs = provider.getExpandedRunRefsNeedingJobs();
+      expect(needingJobs).toHaveLength(2);
     });
   });
 });
