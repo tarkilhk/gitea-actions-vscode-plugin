@@ -19,7 +19,7 @@ export function getSettings(): ExtensionSettings {
     insecureSkipVerify: cfg.get<boolean>('tls.insecureSkipVerify', false),
     discoveryMode: cfg.get<DiscoveryMode>('discovery.mode', 'workspace'),
     runningIntervalSeconds: cfg.get<number>('refresh.runningIntervalSeconds', 15),
-    idleIntervalSeconds: cfg.get<number>('refresh.idleIntervalSeconds', 60),
+    idleIntervalSeconds: cfg.get<number>('refresh.idleIntervalSeconds', 15),
     maxRunsPerRepo: cfg.get<number>('maxRunsPerRepo', 20),
     maxJobsPerRun: cfg.get<number>('maxJobsPerRun', 50)
   };

@@ -53,6 +53,7 @@ import {
 } from './services/statusBarService';
 import {
   RefreshServiceState,
+  resetRefreshCaches,
   refreshAll,
   getConfigError,
   getConfigErrors,
@@ -176,6 +177,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration('giteaActions')) {
         settings = getSettings();
+        resetRefreshCaches(getRefreshState());
         scheduleRefresh();
       }
     })
@@ -299,6 +301,7 @@ async function openBaseUrlSettings(): Promise<void> {
 }
 
 async function manualRefresh(): Promise<void> {
+  resetRefreshCaches(getRefreshState());
   await doRefresh();
 }
 

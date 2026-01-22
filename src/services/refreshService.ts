@@ -37,6 +37,19 @@ export type RefreshServiceState = {
 
 let refreshInFlight: Promise<boolean> | undefined;
 
+export function resetRefreshCaches(state: RefreshServiceState): void {
+  for (const timer of state.jobRefreshTimers.values()) {
+    clearTimeout(timer);
+  }
+  state.jobRefreshTimers.clear();
+  state.inFlightJobFetch.clear();
+  state.jobStepsCache.clear();
+  state.workflowNameCache.clear();
+  state.workspaceProvider.resetJobCaches();
+  state.pinnedProvider.resetJobCaches();
+  state.lastRepoKeys = undefined;
+}
+
 /**
  * Gets configuration errors (missing base URL or token).
  */
@@ -201,9 +214,10 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
       if (limitedRuns.some((r) => isRunning(r.status))) {
         anyRunning = true;
       }
-      // Only fetch jobs for active runs during polling (completed runs are final)
+      // Only fetch jobs for active runs that are expanded or already loaded
       const activeRuns = limitedRuns.filter((r) => isRunning(r.status));
-      await runWithLimit(activeRuns, MAX_CONCURRENT_JOBS, async (run) => {
+      const runsToPollJobs = activeRuns.filter((run) => shouldPollJobsForRun(state, repo, run.id));
+      await runWithLimit(runsToPollJobs, MAX_CONCURRENT_JOBS, async (run) => {
         await fetchJobsForRun(toRunRef(repo, run), state, settings);
       });
     } catch (error) {
@@ -507,6 +521,10 @@ function workflowIdFromPath(path?: string): string | undefined {
 
 export function repoKey(repo: RepoRef): string {
   return `${repo.owner}/${repo.name}`;
+}
+
+function shouldPollJobsForRun(state: RefreshServiceState, repo: RepoRef, runId: number | string): boolean {
+  return state.workspaceProvider.shouldPollJobs(repo, runId) || state.pinnedProvider.shouldPollJobs(repo, runId);
 }
 
 async function runWithLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {

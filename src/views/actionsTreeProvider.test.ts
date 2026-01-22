@@ -654,4 +654,56 @@ describe('ActionsTreeProvider - Targeted Refresh', () => {
       expect(needingJobs).toHaveLength(2);
     });
   });
+
+  describe('shouldPollJobs', () => {
+    it('should return true when run is expanded and jobs are unloaded', () => {
+      provider.setRepositories([testRepo]);
+      const run = createTestRun(123, 'test-workflow', 'running');
+      provider.updateRuns(testRepo, [run]);
+
+      const runNode: RunNode = { type: 'run', repo: testRepo, run };
+      provider.markExpanded(runNode);
+
+      expect(provider.shouldPollJobs(testRepo, 123)).toBe(true);
+    });
+
+    it('should return true when jobs are loaded even if run is collapsed', () => {
+      provider.setRepositories([testRepo]);
+      const run = createTestRun(123, 'test-workflow', 'running');
+      provider.updateRuns(testRepo, [run]);
+
+      const runNode: RunNode = { type: 'run', repo: testRepo, run };
+      provider.markExpanded(runNode);
+
+      const job = createTestJob(456, 'test-job');
+      provider.updateJobs(testRepo, 123, [job]);
+
+      provider.markCollapsed(runNode);
+
+      expect(provider.shouldPollJobs(testRepo, 123)).toBe(true);
+    });
+
+    it('should return false when run is collapsed and jobs are unloaded', () => {
+      provider.setRepositories([testRepo]);
+      const run = createTestRun(123, 'test-workflow', 'running');
+      provider.updateRuns(testRepo, [run]);
+
+      expect(provider.shouldPollJobs(testRepo, 123)).toBe(false);
+    });
+  });
+
+  describe('resetJobCaches', () => {
+    it('should reset job caches to unloaded for collapsed runs', () => {
+      provider.setRepositories([testRepo]);
+      const run = createTestRun(123, 'test-workflow', 'running');
+      provider.updateRuns(testRepo, [run]);
+
+      const job = createTestJob(456, 'test-job');
+      provider.updateJobs(testRepo, 123, [job]);
+
+      provider.resetJobCaches();
+
+      expect(provider.shouldPollJobs(testRepo, 123)).toBe(false);
+    });
+  });
 });

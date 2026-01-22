@@ -78,7 +78,7 @@
         },
         "giteaActions.refresh.idleIntervalSeconds": {
           "type": "number",
-          "default": 60,
+          "default": 15,
           "minimum": 10,
           "description": "Polling interval (seconds) while idle."
         },
