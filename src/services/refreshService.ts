@@ -10,7 +10,7 @@ import { ActionsTreeProvider } from '../views/actionsTreeProvider';
 import { SettingsTreeProvider } from '../views/settingsTreeProvider';
 import { RunNode } from '../views/nodes';
 import { logDebug, logWarn } from '../util/logging';
-import { JOBS_TIMEOUT_MS, JOB_REFRESH_DELAY_MS, MAX_CONCURRENT_REPOS, MAX_CONCURRENT_JOBS } from '../config/constants';
+import { JOBS_TIMEOUT_MS, MAX_CONCURRENT_REPOS, MAX_CONCURRENT_JOBS } from '../config/constants';
 import { isRunning, updateStatusBar } from './statusBarService';
 import { isJobActive } from './logStreamService';
 
@@ -505,7 +505,7 @@ export function scheduleJobRefresh(
   const timer = setTimeout(() => {
     state.jobRefreshTimers.delete(key);
     void fetchJobsForRun(runRef, state, settings, { refreshOnly: true });
-  }, JOB_REFRESH_DELAY_MS);
+  }, settings.jobsIntervalSeconds * 1000);
   state.jobRefreshTimers.set(key, timer);
 }
 

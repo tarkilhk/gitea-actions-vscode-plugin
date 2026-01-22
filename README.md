@@ -36,9 +36,11 @@ The extension adapts its refresh rate based on activity:
 - **15 seconds** when workflows are running (configurable)
 - **15 seconds** when idle (configurable)
 
-**Targeted Refresh:** Run status is always refreshed, but job and step details are only fetched for expanded runs (or runs that already have jobs loaded). Active expanded runs refresh job/step data every 5 seconds until completion.
+**Targeted Refresh:** Run status is always refreshed, but job and step details are only fetched for expanded runs (or runs that already have jobs loaded). Active expanded runs refresh job/step data every 5 seconds until completion (configurable).
 
-**Log Streaming:** Job and step logs poll every 5 seconds while streaming.
+**Log Streaming:** Job and step logs poll every 5 seconds while streaming (configurable).
+
+**Focus-Aware Polling:** Polling pauses when the editor window is unfocused and all Gitea views are hidden, and resumes when you return.
 
 ### Status Bar Integration
 A subtle status bar indicator shows you the current state of your workflows at a glance.
@@ -99,6 +101,8 @@ Manage your extension configuration:
 | `giteaActions.discovery.mode` | `workspace` | How to discover repos (see below) |
 | `giteaActions.refresh.runningIntervalSeconds` | `15` | Polling interval when runs are active |
 | `giteaActions.refresh.idleIntervalSeconds` | `15` | Polling interval when idle |
+| `giteaActions.refresh.jobsIntervalSeconds` | `5` | Polling interval for active run job/step refresh |
+| `giteaActions.logs.pollIntervalSeconds` | `5` | Polling interval for job/step log streaming |
 | `giteaActions.maxRunsPerRepo` | `20` | Maximum runs to fetch per repository |
 | `giteaActions.maxJobsPerRun` | `50` | Maximum jobs to fetch per run |
 | `giteaActions.tls.insecureSkipVerify` | `false` | Skip TLS verification (not recommended) |

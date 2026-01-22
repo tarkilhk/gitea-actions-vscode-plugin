@@ -75,6 +75,11 @@ let workspaceTree: vscode.TreeView<ActionsNode>;
 let pinnedTree: vscode.TreeView<ActionsNode>;
 let settingsTree: vscode.TreeView<ActionsNode>;
 let refreshController: RefreshController | undefined;
+let windowFocused = true;
+let workspaceVisible = true;
+let pinnedVisible = true;
+let settingsVisible = true;
+let pollingEnabled = true;
 const lastRunsByRepo = new Map<string, WorkflowRun[]>();
 const workflowNameCache = new Map<string, Map<string, string>>();
 const inFlightJobFetch = new Map<string, Promise<Job[] | undefined>>();
@@ -122,6 +127,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     showCollapseAll: true
   });
   context.subscriptions.push(workspaceTree, pinnedTree, settingsTree);
+  windowFocused = vscode.window.state.focused;
+  workspaceVisible = workspaceTree.visible;
+  pinnedVisible = pinnedTree.visible;
+  settingsVisible = settingsTree.visible;
   context.subscriptions.push(
     workspaceTree.onDidExpandElement((e) => {
       workspaceProvider.markExpanded(e.element);
@@ -189,19 +198,37 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     idleSeconds: settings.idleIntervalSeconds
   }));
   context.subscriptions.push(refreshController);
-  refreshController.start();
+  updatePollingState();
 
   // Refresh when views become visible
   context.subscriptions.push(
     workspaceTree.onDidChangeVisibility((e) => {
+      workspaceVisible = e.visible;
+      updatePollingState();
+      if (e.visible) {
+        void doRefresh();
+      }
+    }),
+    pinnedTree.onDidChangeVisibility((e) => {
+      pinnedVisible = e.visible;
+      updatePollingState();
       if (e.visible) {
         void doRefresh();
       }
     }),
     settingsTree.onDidChangeVisibility((e) => {
+      settingsVisible = e.visible;
+      updatePollingState();
       if (e.visible) {
         void doRefresh();
       }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.window.onDidChangeWindowState((e) => {
+      windowFocused = e.focused;
+      updatePollingState();
     })
   );
   
@@ -327,7 +354,9 @@ async function doRefresh(): Promise<boolean> {
 
 function scheduleRefresh(): void {
   refreshController?.stop();
-  refreshController?.start();
+  if (shouldPoll()) {
+    refreshController?.start();
+  }
 }
 
 async function handleExpand(element: ActionsNode): Promise<void> {
@@ -338,5 +367,22 @@ async function handleExpand(element: ActionsNode): Promise<void> {
     const state = getRefreshState();
     // Pass the actual expanded RunNode instance for proper UI refresh
     await fetchJobsForRun(toRunRef(element.repo, element.run), state, settings, { runNode: element });
+  }
+}
+
+function shouldPoll(): boolean {
+  return windowFocused || workspaceVisible || pinnedVisible || settingsVisible;
+}
+
+function updatePollingState(): void {
+  const nextEnabled = shouldPoll();
+  if (nextEnabled === pollingEnabled) {
+    return;
+  }
+  pollingEnabled = nextEnabled;
+  if (pollingEnabled) {
+    refreshController?.start();
+  } else {
+    refreshController?.stop();
   }
 }

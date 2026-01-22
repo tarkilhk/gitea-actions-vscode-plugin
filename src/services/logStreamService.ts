@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { GiteaApi } from '../gitea/api';
 import { GiteaInternalApi } from '../gitea/internalApi';
 import { RepoRef, RunRef, Job, Step } from '../gitea/models';
-import { LOG_POLL_INTERVAL_MS, JOBS_TIMEOUT_MS } from '../config/constants';
+import { JOBS_TIMEOUT_MS } from '../config/constants';
 import { normalizeStatus } from '../util/status';
 import { ExtensionSettings } from '../config/settings';
 
@@ -147,7 +147,8 @@ export async function startLogStream(
     if (!active) {
       break;
     }
-    await sleep(LOG_POLL_INTERVAL_MS);
+    const settings = deps.getSettings();
+    await sleep(settings.logPollIntervalSeconds * 1000);
   }
 
   stopLogStream(uri);
@@ -245,7 +246,8 @@ export async function startStepLogStream(
       deps.logContentProvider.update(uri, `Failed to load step logs: ${message}`);
     }
 
-    await sleep(LOG_POLL_INTERVAL_MS);
+    const settings = deps.getSettings();
+    await sleep(settings.logPollIntervalSeconds * 1000);
   }
 
   // Final fetch after loop ends
