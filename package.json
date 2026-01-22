@@ -3,7 +3,7 @@
   "displayName": "Gitea Actions",
   "description": "View and inspect Gitea Actions workflow runs directly from VS Code / Cursor. Monitor CI/CD pipelines, check job status, view logs, and manage secrets and variables for your Gitea Actions workflows.",
   "icon": "resources/gitea-actions-icon.png",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "publisher": "tarkil",
   "license": "MIT",
   "repository": {
