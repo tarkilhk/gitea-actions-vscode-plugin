@@ -26,6 +26,8 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
   readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
 
   private readonly repos = new Map<RepoKey, RepoState>();
+  private readonly repoNodes = new Map<RepoKey, RepoNode>();
+  private readonly runNodes = new Map<string, RunNode>();
   private configErrors: Array<{ message: string; action: 'configureBaseUrl' | 'setToken' }> = [];
   
   // Track expanded nodes to preserve state across refreshes
@@ -95,11 +97,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       }
       // Auto-expand when there's only one repo
       const autoExpand = repoStates.length === 1;
-      return repoStates.map<RepoNode>((state) => ({
-        type: 'repo',
-        repo: state.repo,
-        expanded: autoExpand
-      }));
+      return repoStates.map<RepoNode>((state) => this.getRepoNode(state.repo, autoExpand));
     }
 
     // Handle repo node expansion - show runs for this repo
@@ -118,19 +116,13 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
           } satisfies MessageNode
         ];
       }
-      return state.runs.map<RunNode>((run) => ({
-        type: 'run',
-        repo: element.repo,
-        run
-      }));
+      return state.runs.map<RunNode>((run) =>
+        this.upsertRunNode(element.repo, this.getDisplayRun(state, run))
+      );
     }
 
     if (element.type === 'workflowGroup') {
-      return element.runs.map<RunNode>((run) => ({
-        type: 'run',
-        repo: element.repo,
-        run
-      }));
+      return element.runs.map<RunNode>((run) => this.upsertRunNode(element.repo, run));
     }
 
     if (element.type === 'run') {
@@ -218,10 +210,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     if (element.type === 'run') {
       // Run nodes are children of repo nodes (in runs mode) or workflow group nodes (in workflows mode)
       if (this.mode === 'runs') {
-        return {
-          type: 'repo',
-          repo: element.repo
-        };
+        return this.getRepoNode(element.repo);
       } else {
         // In workflows mode, find the workflow group
         const workflowName = element.run.workflowName ?? element.run.name;
@@ -239,11 +228,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       if (repoState) {
         const run = repoState.runs.find((r) => String(r.id) === String(element.runRef.id));
         if (run) {
-          return {
-            type: 'run',
-            repo: element.runRef.repo,
-            run
-          };
+          return this.upsertRunNode(element.runRef.repo, run);
         }
       }
     }
@@ -299,6 +284,12 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
             }
           }
         }
+        this.repoNodes.delete(removedKey);
+        if (repoState) {
+          for (const run of repoState.runs) {
+            this.runNodes.delete(this.runNodeKey(repoState.repo, run.id));
+          }
+        }
       }
     }
     
@@ -320,11 +311,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       // Only refresh if the repo was in error state or has no runs yet
       // This avoids unnecessary refreshes during normal polling
       if (wasErrorOrEmpty) {
-        const repoNode: RepoNode = {
-          type: 'repo',
-          repo
-        };
-        this.refresh(repoNode);
+        this.refresh(this.getRepoNode(repo));
       }
     }
   }
@@ -335,11 +322,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       state.state = 'error';
       state.error = error;
       // Refresh only the repo node to preserve expansion state
-      const repoNode: RepoNode = {
-        type: 'repo',
-        repo
-      };
-      this.refresh(repoNode);
+      this.refresh(this.getRepoNode(repo));
     }
   }
 
@@ -359,6 +342,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       if (!newRunIds.has(String(oldRun.id))) {
         const runId = `run-${repo.owner}-${repo.name}-${oldRun.id}`;
         this.expandedNodeIds.delete(runId);
+        this.runNodes.delete(this.runNodeKey(repo, oldRun.id));
         
         const jobCache = state.jobs.get(oldRun.id);
         if (jobCache && jobCache.jobs) {
@@ -396,20 +380,13 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     
     // Decide what to refresh
     if (membershipChanged || orderChanged) {
-      // Membership or order changed - refresh the repo node
-      const repoNode: RepoNode = {
-        type: 'repo',
-        repo
-      };
-      this.refresh(repoNode);
+      // Membership or order changed - full refresh to ensure children update.
+      this.refresh();
     } else if (changedRuns.length > 0) {
       // Only changed runs - refresh those run nodes
       for (const run of changedRuns) {
-        const runNode: RunNode = {
-          type: 'run',
-          repo,
-          run
-        };
+        const displayRun = this.getDisplayRun(state, run);
+        const runNode = this.upsertRunNode(repo, displayRun);
         this.refresh(runNode);
       }
     }
@@ -426,27 +403,15 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
   updateJobs(repo: RepoRef, runId: number | string, jobs: Job[], runNode?: RunNode): void {
     const state = this.repos.get(repoKey(repo));
     if (state) {
-      const previousCache = state.jobs.get(runId);
-      const wasUnloadedOrLoading = !previousCache || previousCache.state === 'unloaded' || previousCache.state === 'loading';
-      
       state.jobs.set(runId, { state: 'idle', jobs });
       state.inFlightJobs.delete(runId);
       
-      // Refresh the run node if:
-      // 1. The run is active (needs live updates), OR
-      // 2. Jobs were previously unloaded/loading (user just expanded this run)
+      // Refresh the run node whenever job data changes to keep status in sync.
       const run = state.runs.find((r) => String(r.id) === String(runId));
       if (run) {
-        const isActive = run.status === 'running' || run.status === 'queued';
-        if (isActive || wasUnloadedOrLoading) {
-          // Use the provided runNode instance if available, otherwise create a new one
-          const nodeToRefresh = runNode ?? {
-            type: 'run' as const,
-            repo,
-            run
-          };
-          this.refresh(nodeToRefresh);
-        }
+        const displayRun = this.getDisplayRun(state, run);
+        const nodeToRefresh = this.upsertRunNode(repo, displayRun, runNode);
+        this.refresh(nodeToRefresh);
       }
     }
   }
@@ -470,12 +435,8 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       // to show the loading indicator. But only if jobs weren't already loaded.
       const run = state.runs.find((r) => String(r.id) === String(runId));
       if (run && wasUnloadedOrError) {
-        // Use the provided runNode instance if available, otherwise create a new one
-        const nodeToRefresh = runNode ?? {
-          type: 'run' as const,
-          repo,
-          run
-        };
+        const displayRun = this.getDisplayRun(state, run);
+        const nodeToRefresh = this.upsertRunNode(repo, displayRun, runNode);
         this.refresh(nodeToRefresh);
       }
     }
@@ -504,12 +465,8 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       if (run) {
         const isActive = run.status === 'running' || run.status === 'queued';
         if (isActive || wasUnloadedOrLoading) {
-          // Use the provided runNode instance if available, otherwise create a new one
-          const nodeToRefresh = runNode ?? {
-            type: 'run' as const,
-            repo,
-            run
-          };
+          const displayRun = this.getDisplayRun(state, run);
+          const nodeToRefresh = this.upsertRunNode(repo, displayRun, runNode);
           this.refresh(nodeToRefresh);
         }
       }
@@ -518,6 +475,8 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
 
   clear(): void {
     this.repos.clear();
+    this.repoNodes.clear();
+    this.runNodes.clear();
     this.configErrors = [];
     this.expandedNodeIds.clear();
     this.refresh();
@@ -644,22 +603,14 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     for (const [, state] of this.repos.entries()) {
       const repoId = `repo-${state.repo.owner}-${state.repo.name}`;
       if (repoId === id) {
-        return {
-          type: 'repo',
-          repo: state.repo,
-          expanded: true
-        };
+        return this.getRepoNode(state.repo, true);
       }
 
       // Check run nodes
       for (const run of state.runs) {
         const runId = `run-${state.repo.owner}-${state.repo.name}-${run.id}`;
         if (runId === id) {
-          return {
-            type: 'run',
-            repo: state.repo,
-            run
-          };
+          return this.upsertRunNode(state.repo, run);
         }
 
         // Check job nodes
@@ -702,7 +653,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
         continue;
       }
       for (const run of state.runs) {
-        results.push({ repo: state.repo, run });
+        results.push({ repo: state.repo, run: this.getDisplayRun(state, run) });
       }
     }
     // Sort: running/queued runs first (prioritized), then by time descending
@@ -756,6 +707,67 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       Array.from(state.jobs.values()).some((cache) => cache.state === 'loading' || cache.state === 'unloaded')
     );
   }
+
+  private getRepoNode(repo: RepoRef, expanded?: boolean): RepoNode {
+    const key = repoKey(repo);
+    let node = this.repoNodes.get(key);
+    if (!node) {
+      node = { type: 'repo', repo };
+      this.repoNodes.set(key, node);
+    }
+    node.repo = repo;
+    if (expanded !== undefined) {
+      node.expanded = expanded;
+    }
+    return node;
+  }
+
+  private upsertRunNode(repo: RepoRef, run: WorkflowRun, existing?: RunNode): RunNode {
+    const key = this.runNodeKey(repo, run.id);
+    const node = existing ?? this.runNodes.get(key) ?? { type: 'run', repo, run };
+    node.repo = repo;
+    node.run = run;
+    this.runNodes.set(key, node);
+    return node;
+  }
+
+  private runNodeKey(repo: RepoRef, runId: number | string): string {
+    return `${repoKey(repo)}#${runId}`;
+  }
+
+  private getDisplayRun(state: RepoState, run: WorkflowRun): WorkflowRun {
+    const cache = state.jobs.get(run.id);
+    if (!cache || cache.state !== 'idle' || cache.jobs.length === 0) {
+      return run;
+    }
+    const hasActive = cache.jobs.some((job) => job.status === 'running' || job.status === 'queued');
+    const allCompleted = cache.jobs.every((job) => job.status === 'completed');
+    let derivedStatus: WorkflowRun['status'] | undefined;
+    if (hasActive) {
+      derivedStatus = 'running';
+    } else if (allCompleted) {
+      derivedStatus = 'completed';
+    } else {
+      return run;
+    }
+    const rank: Record<WorkflowRun['status'], number> = {
+      queued: 0,
+      running: 1,
+      completed: 2,
+      unknown: 0
+    };
+    if (rank[derivedStatus] <= rank[run.status]) {
+      return run;
+    }
+    const next: WorkflowRun = { ...run, status: derivedStatus };
+    if (derivedStatus === 'completed' && (!run.conclusion || run.conclusion === 'unknown')) {
+      const conclusion = deriveConclusion(cache.jobs);
+      if (conclusion) {
+        next.conclusion = conclusion;
+      }
+    }
+    return next;
+  }
 }
 
 function repoKey(repo: RepoRef): string {
@@ -802,4 +814,20 @@ function hasRunChanged(oldRun: WorkflowRun, newRun: WorkflowRun): boolean {
     oldRun.updatedAt !== newRun.updatedAt ||
     oldRun.completedAt !== newRun.completedAt
   );
+}
+
+function deriveConclusion(jobs: Job[]): WorkflowRun['conclusion'] | undefined {
+  if (jobs.some((job) => job.conclusion === 'failure')) {
+    return 'failure';
+  }
+  if (jobs.some((job) => job.conclusion === 'cancelled')) {
+    return 'cancelled';
+  }
+  if (jobs.some((job) => job.conclusion === 'skipped')) {
+    return 'skipped';
+  }
+  if (jobs.some((job) => job.conclusion === 'success')) {
+    return 'success';
+  }
+  return undefined;
 }
