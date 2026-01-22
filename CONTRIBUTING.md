@@ -117,6 +117,9 @@ Tests are co-located with source files using the `.test.ts` suffix:
 - `src/util/status.test.ts` — Status normalization
 - `src/gitea/api.test.ts` — API response mapping
 - `src/gitea/discovery.test.ts` — Git remote parsing
+- `src/gitea/internalApi.test.ts` — Internal API for job steps
+- `src/views/actionsTreeProvider.test.ts` — Tree provider expansion state and targeted refresh
+- `src/services/refreshService.test.ts` — Repo list diffing logic
 
 ### Writing Tests
 
@@ -153,6 +156,16 @@ Gitea API → GiteaClient → GiteaApi → RefreshService → TreeProviders → 
 - **Context objects** — Commands receive context objects with dependencies (avoid global state)
 - **Barrel exports** — Each directory has an `index.ts` for clean imports
 - **Defensive mapping** — API responses are normalized to handle various Gitea versions
+- **Targeted refresh** — Only active (running/queued) runs trigger UI updates; completed runs are final and never refreshed during polling
+
+### Refresh Strategy
+
+The refresh system is optimized to preserve tree expansion state:
+
+1. **Repo diffing** — `setRepositories()` only called when the repo list actually changes
+2. **Active-only refresh** — During polling, only active runs fetch jobs and trigger UI updates
+3. **Conditional loading indicators** — Loading state only shown on first load or error recovery
+4. **Granular tree updates** — Individual nodes are refreshed instead of the entire tree when possible
 
 ## Code Style
 

@@ -311,10 +311,21 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
   setRepoLoading(repo: RepoRef): void {
     const state = this.repos.get(repoKey(repo));
     if (state) {
+      const wasErrorOrEmpty = state.state === 'error' || state.runs.length === 0;
+      
       state.state = 'loading';
       state.error = undefined;
       state.inFlightJobs.clear();
-      this.refresh();
+      
+      // Only refresh if the repo was in error state or has no runs yet
+      // This avoids unnecessary refreshes during normal polling
+      if (wasErrorOrEmpty) {
+        const repoNode: RepoNode = {
+          type: 'repo',
+          repo
+        };
+        this.refresh(repoNode);
+      }
     }
   }
 
@@ -323,53 +334,80 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     if (state) {
       state.state = 'error';
       state.error = error;
-      this.refresh();
+      // Refresh only the repo node to preserve expansion state
+      const repoNode: RepoNode = {
+        type: 'repo',
+        repo
+      };
+      this.refresh(repoNode);
     }
   }
 
   updateRuns(repo: RepoRef, runs: WorkflowRun[]): void {
     const state = this.repos.get(repoKey(repo));
-    if (state) {
-      // Clean up expansion state for removed runs and their jobs
-      const currentRunIds = new Set(runs.map(r => String(r.id)));
-      for (const oldRun of state.runs) {
-        if (!currentRunIds.has(String(oldRun.id))) {
-          // Remove expansion state for the run
-          const runId = `run-${repo.owner}-${repo.name}-${oldRun.id}`;
-          this.expandedNodeIds.delete(runId);
-          
-          // Remove expansion state for all jobs in this run
-          const jobCache = state.jobs.get(oldRun.id);
-          if (jobCache && jobCache.jobs) {
-            for (const job of jobCache.jobs) {
-              const jobId = `job-${repo.owner}-${repo.name}-${oldRun.id}-${job.id}`;
-              this.expandedNodeIds.delete(jobId);
-            }
+    if (!state) {
+      return;
+    }
+    
+    const oldRuns = state.runs;
+    const newRunIds = new Set(runs.map(r => String(r.id)));
+    const oldRunIds = new Set(oldRuns.map(r => String(r.id)));
+    const oldRunMap = new Map(oldRuns.map(r => [String(r.id), r]));
+    
+    // Clean up expansion state for removed runs and their jobs
+    for (const oldRun of oldRuns) {
+      if (!newRunIds.has(String(oldRun.id))) {
+        const runId = `run-${repo.owner}-${repo.name}-${oldRun.id}`;
+        this.expandedNodeIds.delete(runId);
+        
+        const jobCache = state.jobs.get(oldRun.id);
+        if (jobCache && jobCache.jobs) {
+          for (const job of jobCache.jobs) {
+            const jobId = `job-${repo.owner}-${repo.name}-${oldRun.id}-${job.id}`;
+            this.expandedNodeIds.delete(jobId);
           }
         }
       }
-      
-      state.runs = runs;
-      state.state = 'idle';
-      state.error = undefined;
-      const nextJobs = new Map<string | number, JobCache>();
-      for (const run of runs) {
-        nextJobs.set(run.id, state.jobs.get(run.id) ?? { state: 'unloaded', jobs: [] });
-      }
-      state.jobs = nextJobs;
-      state.inFlightJobs = new Map();
-      this.refresh();
     }
-  }
-
-  updateJobs(repo: RepoRef, runId: number | string, jobs: Job[]): void {
-    const state = this.repos.get(repoKey(repo));
-    if (state) {
-      state.jobs.set(runId, { state: 'idle', jobs });
-      state.inFlightJobs.delete(runId);
-      // Explicitly refresh the run node so its icon updates when jobs change
-      const run = state.runs.find((r) => String(r.id) === String(runId));
-      if (run) {
+    
+    // Detect what changed
+    const membershipChanged = detectMembershipChange(oldRunIds, newRunIds);
+    const orderChanged = detectOrderChange(oldRuns, runs);
+    
+    // Find active runs whose status/data changed
+    const changedActiveRuns: WorkflowRun[] = [];
+    for (const newRun of runs) {
+      const isActive = newRun.status === 'running' || newRun.status === 'queued';
+      if (isActive) {
+        const oldRun = oldRunMap.get(String(newRun.id));
+        if (!oldRun || hasRunChanged(oldRun, newRun)) {
+          changedActiveRuns.push(newRun);
+        }
+      }
+    }
+    
+    // Update state
+    state.runs = runs;
+    state.state = 'idle';
+    state.error = undefined;
+    const nextJobs = new Map<string | number, JobCache>();
+    for (const run of runs) {
+      nextJobs.set(run.id, state.jobs.get(run.id) ?? { state: 'unloaded', jobs: [] });
+    }
+    state.jobs = nextJobs;
+    state.inFlightJobs = new Map();
+    
+    // Decide what to refresh
+    if (membershipChanged || orderChanged) {
+      // Membership or order changed - refresh the repo node
+      const repoNode: RepoNode = {
+        type: 'repo',
+        repo
+      };
+      this.refresh(repoNode);
+    } else if (changedActiveRuns.length > 0) {
+      // Only active runs changed - refresh only those run nodes
+      for (const run of changedActiveRuns) {
         const runNode: RunNode = {
           type: 'run',
           repo,
@@ -377,20 +415,50 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
         };
         this.refresh(runNode);
       }
-      // Also do a general refresh for child nodes (jobs)
-      this.refresh();
+    }
+    // If nothing changed, don't refresh at all
+  }
+
+  updateJobs(repo: RepoRef, runId: number | string, jobs: Job[]): void {
+    const state = this.repos.get(repoKey(repo));
+    if (state) {
+      const previousCache = state.jobs.get(runId);
+      const wasUnloadedOrLoading = !previousCache || previousCache.state === 'unloaded' || previousCache.state === 'loading';
+      
+      state.jobs.set(runId, { state: 'idle', jobs });
+      state.inFlightJobs.delete(runId);
+      
+      // Refresh the run node if:
+      // 1. The run is active (needs live updates), OR
+      // 2. Jobs were previously unloaded/loading (user just expanded this run)
+      const run = state.runs.find((r) => String(r.id) === String(runId));
+      if (run) {
+        const isActive = run.status === 'running' || run.status === 'queued';
+        if (isActive || wasUnloadedOrLoading) {
+          const runNode: RunNode = {
+            type: 'run',
+            repo,
+            run
+          };
+          this.refresh(runNode);
+        }
+      }
     }
   }
 
   setRunJobsLoading(repo: RepoRef, runId: number | string): void {
     const state = this.repos.get(repoKey(repo));
     if (state) {
-      const existing = state.jobs.get(runId);
-      state.jobs.set(runId, { state: 'loading', jobs: existing?.jobs ?? [] });
+      const previousCache = state.jobs.get(runId);
+      const wasUnloadedOrError = !previousCache || previousCache.state === 'unloaded' || previousCache.state === 'error';
+      
+      state.jobs.set(runId, { state: 'loading', jobs: previousCache?.jobs ?? [] });
       state.inFlightJobs.delete(runId);
-      // Explicitly refresh the run node so its icon updates
+      
+      // This method is only called for user-initiated expands, so always refresh
+      // to show the loading indicator. But only if jobs weren't already loaded.
       const run = state.runs.find((r) => String(r.id) === String(runId));
-      if (run) {
+      if (run && wasUnloadedOrError) {
         const runNode: RunNode = {
           type: 'run',
           repo,
@@ -398,28 +466,33 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
         };
         this.refresh(runNode);
       }
-      // Also do a general refresh for child nodes
-      this.refresh();
     }
   }
 
   setRunJobsError(repo: RepoRef, runId: number | string, error: string): void {
     const state = this.repos.get(repoKey(repo));
     if (state) {
+      const previousCache = state.jobs.get(runId);
+      const wasUnloadedOrLoading = !previousCache || previousCache.state === 'unloaded' || previousCache.state === 'loading';
+      
       state.jobs.set(runId, { state: 'error', jobs: [], error });
       state.inFlightJobs.delete(runId);
-      // Explicitly refresh the run node so its icon updates
+      
+      // Refresh if:
+      // 1. The run is active (needs live updates), OR
+      // 2. Jobs were previously unloaded/loading (user just expanded this run)
       const run = state.runs.find((r) => String(r.id) === String(runId));
       if (run) {
-        const runNode: RunNode = {
-          type: 'run',
-          repo,
-          run
-        };
-        this.refresh(runNode);
+        const isActive = run.status === 'running' || run.status === 'queued';
+        if (isActive || wasUnloadedOrLoading) {
+          const runNode: RunNode = {
+            type: 'run',
+            repo,
+            run
+          };
+          this.refresh(runNode);
+        }
       }
-      // Also do a general refresh for child nodes
-      this.refresh();
     }
   }
 
@@ -433,6 +506,22 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
   setConfigErrors(errors: Array<{ message: string; action: 'configureBaseUrl' | 'setToken' }>): void {
     this.configErrors = errors;
     this.refresh();
+  }
+
+  /**
+   * Checks if a repo is currently in error state.
+   */
+  isRepoInErrorState(repo: RepoRef): boolean {
+    const state = this.repos.get(repoKey(repo));
+    return state?.state === 'error';
+  }
+
+  /**
+   * Checks if a repo has any cached runs (i.e., has been loaded at least once).
+   */
+  hasRepoBeenLoaded(repo: RepoRef): boolean {
+    const state = this.repos.get(repoKey(repo));
+    return state ? state.runs.length > 0 || state.state === 'idle' : false;
   }
 
   refresh(node?: ActionsNode): void {
@@ -594,4 +683,46 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
 
 function repoKey(repo: RepoRef): string {
   return `${repo.owner}/${repo.name}`;
+}
+
+/**
+ * Detects if run list membership changed (runs added or removed).
+ */
+function detectMembershipChange(oldIds: Set<string>, newIds: Set<string>): boolean {
+  if (oldIds.size !== newIds.size) {
+    return true;
+  }
+  for (const id of newIds) {
+    if (!oldIds.has(id)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Detects if run list order changed.
+ */
+function detectOrderChange(oldRuns: WorkflowRun[], newRuns: WorkflowRun[]): boolean {
+  if (oldRuns.length !== newRuns.length) {
+    return true;
+  }
+  for (let i = 0; i < oldRuns.length; i++) {
+    if (String(oldRuns[i].id) !== String(newRuns[i].id)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Detects if a run's data has changed in a meaningful way.
+ */
+function hasRunChanged(oldRun: WorkflowRun, newRun: WorkflowRun): boolean {
+  return (
+    oldRun.status !== newRun.status ||
+    oldRun.conclusion !== newRun.conclusion ||
+    oldRun.updatedAt !== newRun.updatedAt ||
+    oldRun.completedAt !== newRun.completedAt
+  );
 }

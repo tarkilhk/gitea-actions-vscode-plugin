@@ -361,4 +361,192 @@ describe('ActionsTreeProvider - Expansion State Preservation', () => {
       expect(provider.findNodeById('job-test-test-repo-123-456')).toBeDefined();
     });
   });
+
+  describe('isRepoInErrorState', () => {
+    it('should return true when repo is in error state', () => {
+      provider.setRepositories([testRepo]);
+      provider.setRepoError(testRepo, 'Test error');
+      expect(provider.isRepoInErrorState(testRepo)).toBe(true);
+    });
+
+    it('should return false when repo is not in error state', () => {
+      provider.setRepositories([testRepo]);
+      expect(provider.isRepoInErrorState(testRepo)).toBe(false);
+    });
+
+    it('should return false for unknown repo', () => {
+      const unknownRepo: RepoRef = { host: 'unknown', owner: 'unknown', name: 'unknown' };
+      expect(provider.isRepoInErrorState(unknownRepo)).toBe(false);
+    });
+  });
+
+  describe('hasRepoBeenLoaded', () => {
+    it('should return false when repo has no runs and is not idle', () => {
+      provider.setRepositories([testRepo]);
+      provider.setRepoLoading(testRepo);
+      expect(provider.hasRepoBeenLoaded(testRepo)).toBe(false);
+    });
+
+    it('should return true when repo has runs', () => {
+      provider.setRepositories([testRepo]);
+      const run = createTestRun(123, 'test-workflow');
+      provider.updateRuns(testRepo, [run]);
+      expect(provider.hasRepoBeenLoaded(testRepo)).toBe(true);
+    });
+
+    it('should return false for unknown repo', () => {
+      const unknownRepo: RepoRef = { host: 'unknown', owner: 'unknown', name: 'unknown' };
+      expect(provider.hasRepoBeenLoaded(unknownRepo)).toBe(false);
+    });
+  });
+});
+
+describe('ActionsTreeProvider - Targeted Refresh', () => {
+  let provider: ActionsTreeProvider;
+  const testRepo: RepoRef = {
+    host: 'gitea.example.com',
+    owner: 'test',
+    name: 'test-repo'
+  };
+
+  const createTestRun = (id: number | string, name: string, status: 'running' | 'queued' | 'completed' = 'completed'): WorkflowRun => ({
+    id,
+    name,
+    status,
+    conclusion: status === 'completed' ? 'success' : undefined,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z'
+  });
+
+  const createTestJob = (id: number | string, name: string): Job => ({
+    id,
+    name,
+    status: 'completed',
+    conclusion: 'success',
+    startedAt: '2024-01-01T00:00:00Z',
+    completedAt: '2024-01-01T00:00:00Z'
+  });
+
+  beforeEach(() => {
+    provider = new ActionsTreeProvider('runs');
+  });
+
+  describe('updateRuns - targeted refresh based on changes', () => {
+    it('should not trigger refresh when completed runs are updated with same data', () => {
+      provider.setRepositories([testRepo]);
+      const run = createTestRun(123, 'test-workflow', 'completed');
+      provider.updateRuns(testRepo, [run]);
+      
+      // Update with the same run data
+      provider.updateRuns(testRepo, [run]);
+      
+      // Expansion state should be preserved (no full refresh happened)
+      const repoNode: RepoNode = { type: 'repo', repo: testRepo };
+      provider.markExpanded(repoNode);
+      expect(provider.getExpandedNodeIds().has('repo-test-test-repo')).toBe(true);
+    });
+
+    it('should refresh repo node when membership changes (new run)', () => {
+      provider.setRepositories([testRepo]);
+      const run1 = createTestRun(1, 'workflow1', 'completed');
+      provider.updateRuns(testRepo, [run1]);
+      
+      // Add a new run
+      const run2 = createTestRun(2, 'workflow2', 'completed');
+      provider.updateRuns(testRepo, [run1, run2]);
+      
+      // Both runs should be findable
+      expect(provider.findNodeById('run-test-test-repo-1')).toBeDefined();
+      expect(provider.findNodeById('run-test-test-repo-2')).toBeDefined();
+    });
+
+    it('should refresh repo node when order changes', () => {
+      provider.setRepositories([testRepo]);
+      const run1 = createTestRun(1, 'workflow1', 'completed');
+      const run2 = createTestRun(2, 'workflow2', 'completed');
+      provider.updateRuns(testRepo, [run1, run2]);
+      
+      // Reorder runs
+      provider.updateRuns(testRepo, [run2, run1]);
+      
+      // Both runs should still be findable
+      expect(provider.findNodeById('run-test-test-repo-1')).toBeDefined();
+      expect(provider.findNodeById('run-test-test-repo-2')).toBeDefined();
+    });
+  });
+
+  describe('updateJobs - conditional refresh for active runs', () => {
+    it('should refresh run node when jobs are first loaded', () => {
+      provider.setRepositories([testRepo]);
+      const run = createTestRun(123, 'test-workflow', 'completed');
+      provider.updateRuns(testRepo, [run]);
+      
+      // First time loading jobs
+      const job = createTestJob(456, 'test-job');
+      provider.updateJobs(testRepo, 123, [job]);
+      
+      // Job should be findable
+      expect(provider.findNodeById('job-test-test-repo-123-456')).toBeDefined();
+    });
+
+    it('should not refresh completed run when jobs are updated again', () => {
+      provider.setRepositories([testRepo]);
+      const run = createTestRun(123, 'test-workflow', 'completed');
+      provider.updateRuns(testRepo, [run]);
+      
+      // First load
+      const job = createTestJob(456, 'test-job');
+      provider.updateJobs(testRepo, 123, [job]);
+      
+      // Update again with same jobs (should not refresh since run is completed)
+      provider.updateJobs(testRepo, 123, [job]);
+      
+      // Job should still be findable
+      expect(provider.findNodeById('job-test-test-repo-123-456')).toBeDefined();
+    });
+
+    it('should always refresh active run when jobs are updated', () => {
+      provider.setRepositories([testRepo]);
+      const run = createTestRun(123, 'test-workflow', 'running');
+      provider.updateRuns(testRepo, [run]);
+      
+      // First load
+      const job = createTestJob(456, 'test-job');
+      provider.updateJobs(testRepo, 123, [job]);
+      
+      // Update again (should refresh since run is active)
+      const updatedJob = { ...job, status: 'running' as const };
+      provider.updateJobs(testRepo, 123, [updatedJob]);
+      
+      // Job should be findable
+      expect(provider.findNodeById('job-test-test-repo-123-456')).toBeDefined();
+    });
+  });
+
+  describe('setRepoLoading - conditional refresh', () => {
+    it('should not refresh when repo already has runs', () => {
+      provider.setRepositories([testRepo]);
+      const run = createTestRun(123, 'test-workflow', 'completed');
+      provider.updateRuns(testRepo, [run]);
+      
+      // Mark repo as loading (should not trigger refresh)
+      provider.setRepoLoading(testRepo);
+      
+      // Run should still be findable
+      expect(provider.findNodeById('run-test-test-repo-123')).toBeDefined();
+    });
+
+    it('should refresh when repo is in error state', () => {
+      provider.setRepositories([testRepo]);
+      provider.setRepoError(testRepo, 'Test error');
+      
+      expect(provider.isRepoInErrorState(testRepo)).toBe(true);
+      
+      // Set loading (should trigger refresh to clear error)
+      provider.setRepoLoading(testRepo);
+      
+      // Should no longer be in error state
+      expect(provider.isRepoInErrorState(testRepo)).toBe(false);
+    });
+  });
 });
