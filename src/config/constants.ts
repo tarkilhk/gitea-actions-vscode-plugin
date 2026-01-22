@@ -6,12 +6,6 @@
 /** Timeout for job API requests in milliseconds */
 export const JOBS_TIMEOUT_MS = 4000;
 
-/** Interval between log polling requests when streaming live logs (ms) */
-export const LOG_POLL_INTERVAL_MS = 5000;
-
-/** Delay before refreshing jobs for active runs (ms) */
-export const JOB_REFRESH_DELAY_MS = 5000;
-
 /** Duration for toast/notification messages (ms) */
 export const TOAST_TIMEOUT_MS = 3000;
 

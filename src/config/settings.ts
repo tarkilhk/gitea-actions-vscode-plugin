@@ -8,6 +8,8 @@ export interface ExtensionSettings {
   discoveryMode: DiscoveryMode;
   runningIntervalSeconds: number;
   idleIntervalSeconds: number;
+  jobsIntervalSeconds: number;
+  logPollIntervalSeconds: number;
   maxRunsPerRepo: number;
   maxJobsPerRun: number;
 }
@@ -20,6 +22,8 @@ export function getSettings(): ExtensionSettings {
     discoveryMode: cfg.get<DiscoveryMode>('discovery.mode', 'workspace'),
     runningIntervalSeconds: cfg.get<number>('refresh.runningIntervalSeconds', 15),
     idleIntervalSeconds: cfg.get<number>('refresh.idleIntervalSeconds', 15),
+    jobsIntervalSeconds: cfg.get<number>('refresh.jobsIntervalSeconds', 5),
+    logPollIntervalSeconds: cfg.get<number>('logs.pollIntervalSeconds', 5),
     maxRunsPerRepo: cfg.get<number>('maxRunsPerRepo', 20),
     maxJobsPerRun: cfg.get<number>('maxJobsPerRun', 50)
   };
