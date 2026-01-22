@@ -1,3 +1,9 @@
+## [2.1.7] - 2026-01-22
+
+### ✨ Added
+
+- implement targeted refresh strategy for active runs (bed050c)
+
 ## [2.1.6] - 2026-01-22
 
 ### ✨ Added
