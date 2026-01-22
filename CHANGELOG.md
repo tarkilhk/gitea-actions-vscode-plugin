@@ -1,3 +1,9 @@
+## [2.3.0] - 2026-01-22
+
+### ✨ Added
+
+- add configurable polling intervals for job refresh and log streaming (e6a2db8)
+
 ## [2.2.3] - 2026-01-22
 
 ### 🐛 Fixed
