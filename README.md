@@ -119,7 +119,6 @@ Manage your extension configuration:
 - **Expand runs on-demand** — Jobs aren't fetched until you expand a run, keeping things fast
 - **Click any job** to view its complete logs in an editor tab
 - **Click a specific step** to view only that step's logs
-- **Right-click items** for context menu actions like "Open in Browser"
 - **Click the status bar** to quickly jump to the Gitea Actions panel
 
 ## Security
