@@ -1,12 +1,12 @@
 import * as vscode from 'vscode';
-import { ActionsNode, JobNode, SecretNode, VariableNode, SecretsRootNode, VariablesRootNode } from '../views/nodes';
+import { ActionsNode, JobNode, StepNode, SecretNode, VariableNode, SecretsRootNode, VariablesRootNode } from '../views/nodes';
 
 export type CommandHandlers = {
   setToken: () => Promise<void>;
   clearToken: () => Promise<void>;
   testConnection: () => Promise<void>;
   refresh: () => Promise<void>;
-  viewJobLogs: (node: JobNode) => Promise<void>;
+  viewJobLogs: (node: JobNode | StepNode) => Promise<void>;
   openInBrowser: (node: ActionsNode) => Promise<void>;
   refreshSecrets: (node: SecretsRootNode) => Promise<void>;
   refreshVariables: (node: VariablesRootNode) => Promise<void>;
@@ -26,8 +26,20 @@ export function registerCommands(context: vscode.ExtensionContext, handlers: Com
     vscode.commands.registerCommand('giteaActions.clearToken', () => handlers.clearToken()),
     vscode.commands.registerCommand('giteaActions.testConnection', () => handlers.testConnection()),
     vscode.commands.registerCommand('giteaActions.refresh', () => handlers.refresh()),
-    vscode.commands.registerCommand('giteaActions.viewJobLogs', (node: JobNode) => handlers.viewJobLogs(node)),
-    vscode.commands.registerCommand('giteaActions.openInBrowser', (node: ActionsNode) => handlers.openInBrowser(node)),
+    vscode.commands.registerCommand('giteaActions.viewJobLogs', (node: JobNode | StepNode) => {
+      if (!node || (node.type !== 'job' && node.type !== 'step')) {
+        vscode.window.showErrorMessage('This command can only be used on jobs or steps.');
+        return;
+      }
+      return handlers.viewJobLogs(node);
+    }),
+    vscode.commands.registerCommand('giteaActions.openInBrowser', (node: ActionsNode) => {
+      if (!node) {
+        vscode.window.showErrorMessage('No item selected.');
+        return;
+      }
+      return handlers.openInBrowser(node);
+    }),
     vscode.commands.registerCommand('giteaActions.refreshSecrets', (node: SecretsRootNode) => handlers.refreshSecrets(node)),
     vscode.commands.registerCommand('giteaActions.refreshVariables', (node: VariablesRootNode) => handlers.refreshVariables(node)),
     vscode.commands.registerCommand('giteaActions.createSecret', (node: SecretsRootNode) => handlers.createSecret(node)),
