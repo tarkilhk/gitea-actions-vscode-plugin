@@ -1,3 +1,9 @@
+## [2.3.5] - 2026-01-23
+
+### ♻️ Changed
+
+- streamline command handling and update context menu actions (91c7d04)
+
 ## [2.3.4] - 2026-01-22
 
 ### ✨ Added
