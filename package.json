@@ -235,6 +235,18 @@
           "when": "view == giteaActions.runs || view == giteaActions.runsPinned",
           "group": "navigation"
         }
+      ],
+      "view/item/context": [
+        {
+          "command": "giteaActions.viewJobLogs",
+          "when": "(view == giteaActions.runs || view == giteaActions.runsPinned) && (viewItem == giteaJob || viewItem == giteaJobFailed || viewItem == giteaStep || viewItem == giteaStepFailed)",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.openInBrowser",
+          "when": "(view == giteaActions.runs || view == giteaActions.runsPinned) && (viewItem == giteaRun || viewItem == giteaRunFailed || viewItem == giteaJob || viewItem == giteaJobFailed || viewItem == giteaStep || viewItem == giteaStepFailed)",
+          "group": "inline@2"
+        }
       ]
     }
   },
