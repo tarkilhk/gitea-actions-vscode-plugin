@@ -1,3 +1,9 @@
+## [2.3.6] - 2026-01-23
+
+### ✨ Added
+
+- add new context menu actions for job and run items (eb8ffbe)
+
 ## [2.3.5] - 2026-01-23
 
 ### ♻️ Changed
