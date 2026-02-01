@@ -1,3 +1,9 @@
+## [2.3.7] - 2026-02-01
+
+### ✨ Added
+
+- enhance Gitea integration with improved step handling and error reporting (0dc2fda)
+
 ## [2.3.6] - 2026-01-23
 
 ### ✨ Added
