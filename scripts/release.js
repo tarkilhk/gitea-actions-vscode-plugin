@@ -69,22 +69,17 @@ console.log('✅ Changelog generated');
 packageJson.version = newVersion;
 fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
 
-// Commit the change
+// Tag current HEAD (no new commit — release whatever is already committed)
 const tagName = `v${newVersion}`;
 try {
-  console.log('Committing version change and changelog...');
-  // Use relative paths from repo root
-  runGit('git add package.json CHANGELOG.md');
-  runGit(`git commit -m "chore: bump version to ${newVersion}"`);
-  
-  console.log(`Creating tag ${tagName}...`);
+  console.log(`Creating tag ${tagName} on current HEAD (no commit)...`);
   runGit(`git tag -a ${tagName} -m "Release ${tagName}"`);
-  
-  console.log('Pushing to GitHub...');
-  runGit('git push origin HEAD');
+
+  console.log('Pushing tag to remote...');
   runGit(`git push origin ${tagName}`);
-  
-  console.log('\n✅ Version bumped and pushed!');
+
+  console.log('\n✅ Tag created and pushed!');
+  console.log('   (package.json and CHANGELOG.md were updated locally but not committed; commit them if you want the repo to reflect the new version.)');
   
   // Try to create GitHub release automatically if gh CLI is available
   try {
