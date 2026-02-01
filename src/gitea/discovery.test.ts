@@ -27,12 +27,18 @@ describe('parseRemote', () => {
   describe('SSH URLs', () => {
     it('parses SSH protocol URL', () => {
       const result = parseRemote('origin\tssh://git@github.com/owner/repo.git (fetch)');
-      expect(result).toEqual({ host: 'git@github.com', owner: 'owner', name: 'repo' });
+      expect(result).toEqual({ host: 'github.com', owner: 'owner', name: 'repo' });
     });
 
     it('parses SSH URL with port', () => {
       const result = parseRemote('origin\tssh://git@gitea.example.com:2222/owner/repo.git (push)');
-      expect(result).toEqual({ host: 'git@gitea.example.com:2222', owner: 'owner', name: 'repo' });
+      expect(result).toEqual({ host: 'gitea.example.com:2222', owner: 'owner', name: 'repo' });
+    });
+
+    it('parses SSH URL for localhost and matches baseUrl host', () => {
+      const result = parseRemote('origin\tssh://git@localhost:22/user1/demo.git (fetch)');
+      expect(result).toEqual({ host: 'localhost:22', owner: 'user1', name: 'demo' });
+      expect(hostsMatch(result!.host, 'localhost:3000')).toBe(true);
     });
   });
 
@@ -120,5 +126,11 @@ describe('hostsMatch', () => {
   it('handles IP addresses', () => {
     expect(hostsMatch('192.168.1.1:3000', '192.168.1.1')).toBe(true);
     expect(hostsMatch('192.168.1.1', '192.168.1.2')).toBe(false);
+  });
+
+  it('matches SSH-style user@host to baseUrl host', () => {
+    expect(hostsMatch('git@localhost:22', 'localhost:3000')).toBe(true);
+    expect(hostsMatch('git@github.com', 'github.com')).toBe(true);
+    expect(hostsMatch('git@gitea.example.com:2222', 'gitea.example.com:3000')).toBe(true);
   });
 });
