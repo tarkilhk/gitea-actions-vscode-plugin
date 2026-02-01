@@ -1,15 +1,21 @@
 /**
  * Internal (undocumented) Gitea API for steps and logs.
- * 
- * This module encapsulates the non-public API endpoints used by Gitea's web UI.
- * These endpoints are not part of the official Swagger specification and may
- * change without notice.
- * 
- * When official API support for steps/logs becomes available, this module
- * should be replaced with calls to the official API.
- * 
- * NOTE: The internal API requires CSRF tokens. This implementation fetches
- * a CSRF token on first request and reuses it for subsequent requests.
+ *
+ * BACKGROUND:
+ * Gitea's official API has a `steps` field on jobs but has never implemented
+ * populating it (always returns null). This module provides a workaround by
+ * calling the same internal endpoints the Gitea web UI uses.
+ *
+ * CURRENT STATUS (as of Gitea ≈1.24+):
+ * Recent Gitea versions gated these endpoints behind browser session cookies
+ * (e.g. `gitea_incredible`, `_csrf`). With only a PAT we get 404.
+ *
+ * This worked on Gitea ≈1.23 and earlier. We still try because:
+ * 1. Older Gitea instances may still allow PAT access.
+ * 2. A future Gitea version might re-enable token access or populate the
+ *    official API `steps` field.
+ *
+ * When steps fail to load, refreshService.ts sets job.stepsError for the UI.
  */
 
 import { GiteaClient } from './client';

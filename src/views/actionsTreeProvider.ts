@@ -183,12 +183,14 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     if (element.type === 'job') {
       const steps = element.job.steps ?? [];
       if (!steps.length) {
+        // Show stepsError if set (Gitea blocked the internal API)
+        const errorMessage = element.job.stepsError;
         return [
           {
             type: 'message',
             repo: element.runRef.repo,
-            message: 'No steps reported',
-            severity: 'info'
+            message: errorMessage ?? 'No steps reported',
+            severity: errorMessage ? 'error' : 'info'
           } satisfies MessageNode
         ];
       }

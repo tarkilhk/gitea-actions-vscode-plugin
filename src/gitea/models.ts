@@ -97,4 +97,9 @@ export type Job = {
   completedAt?: string;
   htmlUrl?: string;
   steps?: Step[];
+  /**
+   * Error message when steps could not be loaded.
+   * Set when Gitea's internal API returns 404/401 (session-gated).
+   */
+  stepsError?: string;
 };

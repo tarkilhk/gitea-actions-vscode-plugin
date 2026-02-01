@@ -388,8 +388,9 @@ export async function fetchJobsForRun(
       const start = Date.now();
       // Official API uses database ID
       const jobs = await api.listJobs(repo, runId, { limit: settings.maxJobsPerRun, timeoutMs: JOBS_TIMEOUT_MS });
-      // Internal API uses runNumber (falls back to runId if not available)
-      // Force refresh steps when doing a refresh (refreshOnly=true) to get updated statuses
+      // Try official API for steps first: GET /actions/jobs/{job_id} can return steps (Gitea 1.24+)
+      await hydrateJobStepsFromOfficialApi(api, repo, jobs);
+      // Fallback: internal (web UI) API for steps when official API returns null/empty
       const hydratedCount = await hydrateJobSteps(runRef, jobs, state, { forceRefresh: options?.refreshOnly ?? false });
       const elapsed = Date.now() - start;
       const hydrationNote = hydratedCount ? ` (steps fetched for ${hydratedCount} job${hydratedCount === 1 ? '' : 's'})` : '';
@@ -412,11 +413,46 @@ export async function fetchJobsForRun(
 }
 
 /**
- * Hydrates job steps using the internal Gitea API.
- * 
- * This uses undocumented endpoints that are not part of the official API.
- * The internal API uses run number (URL path) and job index (0-based position).
- * 
+ * Tries to fill job steps from the official Gitea API.
+ *
+ * GET /api/v1/repos/{owner}/{repo}/actions/jobs/{job_id} has a `steps` field in the
+ * schema, but Gitea has never implemented populating it (always returns null).
+ * We still try in case a future Gitea version starts returning steps here.
+ */
+async function hydrateJobStepsFromOfficialApi(
+  api: GiteaApi,
+  repo: RepoRef,
+  jobs: Job[]
+): Promise<void> {
+  const needSteps = jobs.filter((j) => !j.steps?.length && !j.stepsError);
+  if (!needSteps.length) return;
+  await runWithLimit(needSteps, MAX_CONCURRENT_JOBS, async (job) => {
+    try {
+      const full = await api.getJob(repo, job.id);
+      if (full.steps?.length) {
+        job.steps = full.steps;
+        logDebug(`Steps for job ${job.name} (${job.id}) from official API: ${full.steps.length}`);
+      }
+    } catch {
+      // Ignore; hydrateJobSteps will try internal API fallback
+    }
+  });
+}
+
+/**
+ * Hydrates job steps using the internal Gitea web UI API.
+ *
+ * Gitea's official API never populates the `steps` field, so we fall back to the
+ * same internal endpoint the Gitea web UI uses. This worked on older Gitea versions,
+ * but recent versions (≈1.24+) gated this endpoint behind browser session cookies
+ * (e.g. `gitea_incredible`). With only a PAT we get 404.
+ *
+ * We still try because:
+ * 1. Older Gitea versions may still allow PAT access.
+ * 2. A future Gitea version might re-enable token access.
+ *
+ * On 404/401, we set `job.stepsError` so the UI can display a graceful message.
+ *
  * @param runRef - Reference containing repo and run identifiers
  * @param jobs - Jobs to hydrate with step data
  * @param state - Refresh service state
@@ -429,19 +465,20 @@ export async function hydrateJobSteps(
   options?: { forceRefresh?: boolean }
 ): Promise<number> {
   const { repo } = runRef;
-  // Internal API uses runNumber in URL path, fallback to id if not available
-  const internalRunId = runRef.runNumber ?? runRef.id;
+  // Internal API URL: older Gitea used run_number, newer may use run id; we try id first, then run_number on 404
+  const internalRunId = runRef.id;
+  const fallbackRunId = runRef.runNumber != null && runRef.runNumber !== runRef.id ? runRef.runNumber : undefined;
 
-  // Find jobs that need step hydration
-  // If forceRefresh is true, re-fetch steps for all jobs to get updated statuses
+  // Find jobs that need step hydration (skip jobs with stepsError unless forcing refresh)
   const jobsToHydrate: Array<{ job: Job; jobIndex: number }> = [];
   jobs.forEach((job, index) => {
     const needsHydration = !job.steps || job.steps.length === 0;
     const isActive = isJobActive(job.status);
-    // Force refresh for active jobs (they're still running) or when explicitly requested
     const shouldForceRefresh = options?.forceRefresh || isActive;
+    // Don't retry if we already have an error (session-gated) unless forcing refresh
+    const hasError = !!job.stepsError && !shouldForceRefresh;
     
-    if (needsHydration || shouldForceRefresh) {
+    if ((needsHydration || shouldForceRefresh) && !hasError) {
       jobsToHydrate.push({ job, jobIndex: index });
     }
   });
@@ -459,13 +496,13 @@ export async function hydrateJobSteps(
 
   const hydrateStart = Date.now();
   await runWithLimit(jobsToHydrate, MAX_CONCURRENT_JOBS, async ({ job, jobIndex }) => {
-    const cacheKey = `${repo.owner}/${repo.name}#${internalRunId}#${jobIndex}`;
     const isActive = isJobActive(job.status);
     // Only use cache if not forcing refresh and job is not active
     // Active jobs need fresh data, and forceRefresh means we want latest status
     const shouldUseCache = !options?.forceRefresh && !isActive;
-    const cachedSteps = shouldUseCache ? state.jobStepsCache.get(cacheKey) : undefined;
-    
+    const cacheKeyForRun = (runId: number | string) => `${repo.owner}/${repo.name}#${runId}#${jobIndex}`;
+    const cachedSteps = shouldUseCache ? state.jobStepsCache.get(cacheKeyForRun(internalRunId)) : undefined;
+
     if (cachedSteps?.length) {
       job.steps = cachedSteps;
       return;
@@ -475,14 +512,44 @@ export async function hydrateJobSteps(
       const result = await internalApi.getJobWithSteps(repo, internalRunId, jobIndex);
       if (result.steps?.length) {
         job.steps = result.steps;
-        state.jobStepsCache.set(cacheKey, result.steps);
+        state.jobStepsCache.set(cacheKeyForRun(internalRunId), result.steps);
         logDebug(`Fetched ${result.steps.length} steps for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} run ${internalRunId}`);
       } else {
         logWarn(`Internal API returned no steps for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} run ${internalRunId}`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logWarn(`Failed to fetch steps via internal API for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} run ${internalRunId}: ${message}`);
+      const isSessionGated = message.includes('404') || message.includes('401');
+      
+      // Try fallback with run_number if we got 404 (older Gitea URL scheme)
+      if (message.includes('404') && fallbackRunId !== undefined) {
+        try {
+          logDebug(`Internal API 404 with run ${internalRunId}, retrying with run_number ${fallbackRunId}`);
+          const result = await internalApi.getJobWithSteps(repo, fallbackRunId, jobIndex);
+          if (result.steps?.length) {
+            job.steps = result.steps;
+            state.jobStepsCache.set(cacheKeyForRun(fallbackRunId), result.steps);
+            logDebug(`Fetched ${result.steps.length} steps for job ${jobIndex} (${job.name}) using run_number ${fallbackRunId}`);
+            return;
+          }
+        } catch (fallbackError) {
+          const fallbackMsg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+          if (fallbackMsg.includes('404') || fallbackMsg.includes('401')) {
+            // Both attempts failed with session-gated error
+            job.stepsError = 'Steps unavailable: Gitea requires browser session (not supported with PAT)';
+            logWarn(`Steps blocked by session auth for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name}`);
+            return;
+          }
+        }
+      }
+      
+      // Set graceful error if session-gated
+      if (isSessionGated) {
+        job.stepsError = 'Steps unavailable: Gitea requires browser session (not supported with PAT)';
+        logWarn(`Steps blocked by session auth for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name}`);
+      } else {
+        logWarn(`Failed to fetch steps via internal API for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} run ${internalRunId}: ${message}`);
+      }
     }
   });
   logDebug(`Hydrated steps for ${jobsToHydrate.length} job(s) in ${repo.owner}/${repo.name} run ${internalRunId} in ${Date.now() - hydrateStart}ms`);

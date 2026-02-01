@@ -67,6 +67,8 @@ Install from the [Open VSX Registry](https://open-vsx.org/extension/tarkil/gitea
 
 That's it! Your repositories will appear automatically.
 
+Workspace discovery supports both HTTP and SSH clone URLs: the extension matches your git remote host to the configured Gitea base URL, so repositories cloned via SSH (e.g. `ssh://git@localhost:22/owner/repo.git`) are recognized when the base URL is the same host (e.g. `http://localhost:3000`).
+
 ## Tree Views
 
 ### Workflow Runs
@@ -120,6 +122,18 @@ Manage your extension configuration:
 - **Click any job** to view its complete logs in an editor tab
 - **Click a specific step** to view only that step's logs
 - **Click the status bar** to quickly jump to the Gitea Actions panel
+
+## Steps and Gitea Limitations
+
+Job **steps** (the list under each job) are unfortunately limited by Gitea's API:
+
+1. **Official API** — The Gitea API schema includes a `steps` field on jobs, but **Gitea has never implemented populating it** — it always returns `null`. We still call it in case a future Gitea version starts returning steps.
+
+2. **Internal (web UI) API** — The extension falls back to the same endpoint the Gitea web UI uses. This worked on older Gitea versions (≈1.23 and earlier), but **recent Gitea versions (≈1.24+) gated this endpoint behind browser session cookies** (e.g. `gitea_incredible`, `_csrf`). With only a PAT we cannot obtain those cookies, so the server returns **404**.
+
+**Bottom line:** If you see "Steps unavailable: Gitea requires browser session", this is a Gitea limitation, not a bug in the extension. Job logs still work via the official logs API — only the step breakdown is affected.
+
+**Workaround for older Gitea:** If you're running Gitea 1.23 or earlier, steps should still work.
 
 ## Security
 

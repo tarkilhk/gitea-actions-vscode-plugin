@@ -78,7 +78,11 @@ export function parseRemote(remoteLine: string): { host: string; owner: string; 
   // HTTPS or SSH with protocol
   const protocolMatch = url.match(/^(https?:\/\/|ssh:\/\/)([^/]+)\/(.+?)(\.git)?$/);
   if (protocolMatch) {
-    const hostPart = protocolMatch[2];
+    let hostPart = protocolMatch[2];
+    // SSH URLs have user@host:port — normalize to host:port for consistent RepoRef.host
+    if (hostPart.includes('@')) {
+      hostPart = hostPart.replace(/^[^@]+@/, '');
+    }
     const pathPart = protocolMatch[3];
     const [owner, name] = pathPart.replace(/\.git$/, '').split('/');
     if (owner && name) {
@@ -106,10 +110,14 @@ export function hostsMatch(candidate: string, target: string): boolean {
   if (!candidate || !target) {
     return false;
   }
-  if (candidate === target) {
+  // Normalize SSH-style "user@host" or "user@host:port" to host/host:port for comparison
+  const normalizedCandidate = candidate.includes('@')
+    ? candidate.replace(/^[^@]+@/, '')
+    : candidate;
+  if (normalizedCandidate === target) {
     return true;
   }
-  const candidateNoPort = candidate.split(':')[0];
+  const candidateNoPort = normalizedCandidate.split(':')[0];
   const targetNoPort = target.split(':')[0];
   return candidateNoPort === targetNoPort;
 }
