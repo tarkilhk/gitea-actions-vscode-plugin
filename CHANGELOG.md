@@ -1,3 +1,7 @@
+## [2.3.9] - 2026-02-02
+
+- Maintenance release
+
 ## [2.3.8] - 2026-02-02
 
 - Maintenance release
