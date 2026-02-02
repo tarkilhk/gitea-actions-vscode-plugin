@@ -3,7 +3,7 @@
   "displayName": "Gitea Actions",
   "description": "View and inspect Gitea Actions workflow runs directly from VS Code / Cursor. Monitor CI/CD pipelines, check job status, view logs, and manage secrets and variables for your Gitea Actions workflows.",
   "icon": "resources/gitea-actions-icon.png",
-  "version": "2.3.7",
+  "version": "2.3.8",
   "publisher": "tarkil",
   "license": "MIT",
   "repository": {
@@ -245,6 +245,36 @@
         {
           "command": "giteaActions.openInBrowser",
           "when": "(view == giteaActions.runs || view == giteaActions.runsPinned) && (viewItem == giteaRun || viewItem == giteaRunFailed || viewItem == giteaJob || viewItem == giteaJobFailed || viewItem == giteaStep || viewItem == giteaStepFailed)",
+          "group": "inline@2"
+        },
+        {
+          "command": "giteaActions.updateSecret",
+          "when": "view == giteaActions.settings && viewItem == giteaSecret",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.deleteSecret",
+          "when": "view == giteaActions.settings && viewItem == giteaSecret",
+          "group": "inline@2"
+        },
+        {
+          "command": "giteaActions.updateVariable",
+          "when": "view == giteaActions.settings && viewItem == giteaVariable",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.deleteVariable",
+          "when": "view == giteaActions.settings && viewItem == giteaVariable",
+          "group": "inline@2"
+        },
+        {
+          "command": "giteaActions.setToken",
+          "when": "view == giteaActions.settings && viewItem == giteaToken",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.clearToken",
+          "when": "view == giteaActions.settings && viewItem == giteaToken",
           "group": "inline@2"
         }
       ]
