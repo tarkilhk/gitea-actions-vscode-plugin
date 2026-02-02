@@ -1,10 +1,6 @@
-## [2.3.9] - 2026-02-02
+## [2.3.10] - 2026-02-02
 
-- Maintenance release
-
-## [2.3.8] - 2026-02-02
-
-- Maintenance release
+- Re add icons and actions to edit/delete token, secrets, and variables
 
 ## [2.3.7] - 2026-02-01
 
