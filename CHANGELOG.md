@@ -1,3 +1,9 @@
+## [2.3.11] - 2026-02-03
+
+### ✨ Added
+
+- add new actions for managing secrets and variables in Gitea Actions settings + auto log streaming (fb3cf09)
+
 ## [2.3.10] - 2026-02-02
 
 - Re add icons and actions to edit/delete token, secrets, and variables
