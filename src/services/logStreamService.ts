@@ -7,6 +7,25 @@ import { normalizeStatus } from '../util/status';
 import { ExtensionSettings } from '../config/settings';
 
 /**
+ * Scrolls the active editor showing the given log URI to the last line,
+ * so streaming logs stay in view without manual scrolling.
+ */
+function scrollLogEditorToEnd(uri: vscode.Uri): void {
+  const key = uri.toString();
+  const editor = vscode.window.visibleTextEditors.find(
+    (e) => e.document.uri.toString() === key
+  );
+  if (!editor) {
+    return;
+  }
+  const doc = editor.document;
+  const lastLine = Math.max(0, doc.lineCount - 1);
+  const line = doc.lineAt(lastLine);
+  const range = new vscode.Range(lastLine, 0, lastLine, line.text.length);
+  editor.revealRange(range, vscode.TextEditorRevealType.Default);
+}
+
+/**
  * Provides content for virtual log documents.
  */
 export class LiveLogContentProvider implements vscode.TextDocumentContentProvider {
@@ -21,6 +40,9 @@ export class LiveLogContentProvider implements vscode.TextDocumentContentProvide
   update(uri: vscode.Uri, content: string): void {
     this.contents.set(uri.toString(), content);
     this.emitter.fire(uri);
+    // After VS Code refreshes the document, scroll the editor to the last line
+    // so streaming logs stay in view without manual scrolling.
+    setTimeout(() => scrollLogEditorToEnd(uri), 50);
   }
 
   clear(uri: vscode.Uri): void {

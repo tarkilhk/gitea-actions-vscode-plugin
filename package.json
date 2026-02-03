@@ -248,6 +248,16 @@
           "group": "inline@2"
         },
         {
+          "command": "giteaActions.createSecret",
+          "when": "view == giteaActions.settings && viewItem == giteaSecretsRoot",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.createVariable",
+          "when": "view == giteaActions.settings && viewItem == giteaVariablesRoot",
+          "group": "inline"
+        },
+        {
           "command": "giteaActions.updateSecret",
           "when": "view == giteaActions.settings && viewItem == giteaSecret",
           "group": "inline"
