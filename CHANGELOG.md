@@ -1,3 +1,9 @@
+## [2.3.12] - 2026-02-10
+
+### ✨ Added
+
+- add diagnose steps action and improve error handling for Gitea Actions (b2b3c96)
+
 ## [2.3.11] - 2026-02-03
 
 ### ✨ Added
