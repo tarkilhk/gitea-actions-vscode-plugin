@@ -7,6 +7,7 @@ export type CommandHandlers = {
   testConnection: () => Promise<void>;
   refresh: () => Promise<void>;
   viewJobLogs: (node: JobNode | StepNode) => Promise<void>;
+  diagnoseSteps: (node?: ActionsNode) => Promise<void>;
   openInBrowser: (node: ActionsNode) => Promise<void>;
   refreshSecrets: (node: SecretsRootNode) => Promise<void>;
   refreshVariables: (node: VariablesRootNode) => Promise<void>;
@@ -33,6 +34,7 @@ export function registerCommands(context: vscode.ExtensionContext, handlers: Com
       }
       return handlers.viewJobLogs(node);
     }),
+    vscode.commands.registerCommand('giteaActions.diagnoseSteps', (node?: ActionsNode) => handlers.diagnoseSteps(node)),
     vscode.commands.registerCommand('giteaActions.openInBrowser', (node: ActionsNode) => {
       if (!node) {
         vscode.window.showErrorMessage('No item selected.');

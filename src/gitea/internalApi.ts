@@ -7,15 +7,13 @@
  * calling the same internal endpoints the Gitea web UI uses.
  *
  * CURRENT STATUS (as of Gitea ≈1.24+):
- * Recent Gitea versions gated these endpoints behind browser session cookies
- * (e.g. `gitea_incredible`, `_csrf`). With only a PAT we get 404.
+ * The internal run page (and thus this API) is only accessible with a PAT for
+ * **public** repos. For **private** repos Gitea returns 404 for the run page,
+ * so we cannot get CSRF or call the jobs endpoint. Steps then show as unavailable.
  *
- * This worked on Gitea ≈1.23 and earlier. We still try because:
- * 1. Older Gitea instances may still allow PAT access.
- * 2. A future Gitea version might re-enable token access or populate the
- *    official API `steps` field.
+ * We still call this for public repos and older Gitea instances. When steps
+ * fail to load, refreshService.ts sets job.stepsError for the UI.
  *
- * When steps fail to load, refreshService.ts sets job.stepsError for the UI.
  */
 
 import { GiteaClient } from './client';
@@ -295,94 +293,76 @@ export class GiteaInternalApi {
   }
 
   /**
-   * Fetches a CSRF token by making a GET request to the actions page.
-   * The token is extracted from the Set-Cookie header or HTML meta tag.
+   * Extracts CSRF token and cookies from a response (headers and optional HTML body).
+   * Sets this.csrfToken and this.allCookies when found. Returns true if CSRF was extracted.
+   */
+  private parseCsrfFromResponse(res: Response, text: string): boolean {
+    const collectedCookies: string[] = [];
+    const headersAny = res.headers as unknown as { getSetCookie?: () => string[] };
+    if (typeof headersAny.getSetCookie === 'function') {
+      const cookies = headersAny.getSetCookie();
+      for (const cookie of cookies) {
+        const cookiePart = cookie.split(';')[0];
+        if (cookiePart) collectedCookies.push(cookiePart);
+        const csrfMatch = cookie.match(/_csrf=([^;]+)/);
+        if (csrfMatch) this.csrfToken = csrfMatch[1];
+      }
+      if (this.csrfToken && collectedCookies.length > 0) {
+        this.allCookies = collectedCookies.join('; ');
+        return true;
+      }
+    }
+    const setCookie = res.headers.get('set-cookie');
+    if (setCookie) {
+      const csrfMatch = setCookie.match(/_csrf=([^;]+)/);
+      if (csrfMatch) {
+        this.csrfToken = csrfMatch[1];
+        this.allCookies = `_csrf=${this.csrfToken}`;
+        return true;
+      }
+    }
+    let metaMatch = text.match(/name="_csrf"\s+content="([^"]+)"/);
+    if (metaMatch) {
+      this.csrfToken = metaMatch[1];
+      this.allCookies = `_csrf=${this.csrfToken}`;
+      return true;
+    }
+    metaMatch = text.match(/<input[^>]+name="_csrf"[^>]+value="([^"]+)"/);
+    if (metaMatch) {
+      this.csrfToken = metaMatch[1];
+      this.allCookies = `_csrf=${this.csrfToken}`;
+      return true;
+    }
+    metaMatch = text.match(/data-csrf="([^"]+)"/);
+    if (metaMatch) {
+      this.csrfToken = metaMatch[1];
+      this.allCookies = `_csrf=${this.csrfToken}`;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Fetches CSRF token from the actions run page.
+   * For private repos Gitea returns 404, so we cannot obtain a token.
    */
   private async fetchCsrfToken(repo: RepoRef, runId: number | string): Promise<void> {
     const path = `/${repo.owner}/${repo.name}/actions/runs/${runId}`;
-    
     try {
       logDebug(`Fetching CSRF token from ${path}`);
-      const res = await this.client.request(path, {
-        method: 'GET'
-      } as RequestInit);
-
-      // Try multiple methods to extract CSRF token
-      
-      // Method 1: Use getSetCookie() for undici (returns array of all Set-Cookie headers)
-      const collectedCookies: string[] = [];
-      const headersAny = res.headers as unknown as { getSetCookie?: () => string[] };
-      if (typeof headersAny.getSetCookie === 'function') {
-        const cookies = headersAny.getSetCookie();
-        for (const cookie of cookies) {
-          // Extract cookie name=value part (before first semicolon)
-          const cookiePart = cookie.split(';')[0];
-          if (cookiePart) {
-            collectedCookies.push(cookiePart);
-          }
-          const csrfMatch = cookie.match(/_csrf=([^;]+)/);
-          if (csrfMatch) {
-            this.csrfToken = csrfMatch[1];
-          }
-        }
-        if (this.csrfToken && collectedCookies.length > 0) {
-          this.allCookies = collectedCookies.join('; ');
-          logDebug(`CSRF token and ${collectedCookies.length} cookies obtained from getSetCookie()`);
-          return;
-        }
-      }
-
-      // Method 2: Try regular get('set-cookie') header
-      const setCookie = res.headers.get('set-cookie');
-      if (setCookie) {
-        const csrfMatch = setCookie.match(/_csrf=([^;]+)/);
-        if (csrfMatch) {
-          this.csrfToken = csrfMatch[1];
-          this.allCookies = `_csrf=${this.csrfToken}`;
-          logDebug(`CSRF token obtained from set-cookie header`);
-          return;
-        }
-      }
-
-      // Method 3: Parse the HTML response for meta tag or form field
+      const res = await this.client.request(path, { method: 'GET' } as RequestInit);
       const text = await res.text();
-      
-      // Look for meta tag
-      let metaMatch = text.match(/name="_csrf"\s+content="([^"]+)"/);
-      if (metaMatch) {
-        this.csrfToken = metaMatch[1];
-        this.allCookies = `_csrf=${this.csrfToken}`;
-        logDebug(`CSRF token obtained from meta tag`);
-        return;
+      if (res.ok && this.parseCsrfFromResponse(res, text)) {
+        logDebug(`CSRF token and cookies obtained from run page`);
       }
-
-      // Look for hidden input field
-      metaMatch = text.match(/<input[^>]+name="_csrf"[^>]+value="([^"]+)"/);
-      if (metaMatch) {
-        this.csrfToken = metaMatch[1];
-        this.allCookies = `_csrf=${this.csrfToken}`;
-        logDebug(`CSRF token obtained from hidden input`);
-        return;
-      }
-
-      // Look for data attribute
-      metaMatch = text.match(/data-csrf="([^"]+)"/);
-      if (metaMatch) {
-        this.csrfToken = metaMatch[1];
-        this.allCookies = `_csrf=${this.csrfToken}`;
-        logDebug(`CSRF token obtained from data-csrf attribute`);
-        return;
-      }
-
-      logWarn('Could not extract CSRF token from response - tried cookies, meta tags, inputs, and data attributes');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logWarn(`Failed to fetch CSRF token: ${message}`);
+      logDebug(`Run page CSRF fetch failed (e.g. 404 for private repo): ${message}`);
     }
   }
 
   /**
-   * Ensures a CSRF token is available, fetching one if necessary.
+   * Ensures a CSRF token is available (from the actions run page). Fails for private repos (404).
    */
   private async ensureCsrfToken(repo: RepoRef, runId: number | string): Promise<void> {
     if (!this.csrfToken) {
@@ -434,10 +414,10 @@ export class GiteaInternalApi {
       logDebug('CSRF token invalid, refreshing...');
       this.csrfToken = undefined;
       this.allCookies = undefined;
-      
+
       if (repo && runId) {
         await this.fetchCsrfToken(repo, runId);
-        
+
         // Retry with fresh token
         const retryHeaders: Record<string, string> = {
           [CONTENT_TYPE_HEADER]: 'application/json'

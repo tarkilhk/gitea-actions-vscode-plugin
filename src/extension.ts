@@ -33,6 +33,7 @@ import {
   viewJobLogs,
   openInBrowser
 } from './commands/runCommands';
+import { diagnoseSteps } from './commands/diagnosticCommands';
 
 // Services
 import {
@@ -170,6 +171,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     testConnection: () => testConnectionCommand(createTokenContext()),
     refresh: () => manualRefresh(),
     viewJobLogs: (node) => viewJobLogs(node, createLogStreamContext()),
+    diagnoseSteps: (node) => diagnoseSteps(node, createDiagnosticContext()),
     openInBrowser: (node) => openInBrowser(node),
     refreshSecrets: (node) => refreshSecrets(node, createSecretContext()),
     refreshVariables: (node) => refreshVariables(node, createVariableContext()),
@@ -321,6 +323,22 @@ function createLogStreamContext() {
     buildStepLogUri,
     isJobActive,
     isStepActive
+  };
+}
+
+function createDiagnosticContext() {
+  const state = getRefreshState();
+  return {
+    getConfigError: () => getConfigError(state),
+    ensureApi: () => ensureApi(state),
+    ensureInternalApi: () => ensureInternalApi(state),
+    getToken: async () => {
+      // Prefer cached token but fall back to secret storage.
+      if (cachedToken) return cachedToken;
+      const t = await getToken(secretStorage);
+      cachedToken = t;
+      return t;
+    }
   };
 }
 
