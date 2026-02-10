@@ -208,33 +208,20 @@ export async function fetchStepLogs(
   totalSteps: number,
   deps: StepLogStreamDependencies
 ): Promise<void> {
-  // Internal API may use run id or run_number in URL path (Gitea versions differ); try id first
-  const internalRunId = runRef.id;
-  const fallbackRunId = runRef.runNumber != null && runRef.runNumber !== runRef.id ? runRef.runNumber : undefined;
+  // Internal (web UI) API only accepts run_number in the URL
+  if (runRef.runNumber == null) {
+    deps.logContentProvider.update(uri, 'Step logs unavailable: run_number not available');
+    return;
+  }
   try {
-    let stepLog = await internalApi.getStepLogs(runRef.repo, internalRunId, jobIndex, stepIndex, totalSteps);
-    if (!stepLog && fallbackRunId !== undefined) {
-      stepLog = await internalApi.getStepLogs(runRef.repo, fallbackRunId, jobIndex, stepIndex, totalSteps);
-    }
+    const stepLog = await internalApi.getStepLogs(runRef.repo, runRef.runNumber, jobIndex, stepIndex, totalSteps);
     if (stepLog) {
-      const content = GiteaInternalApi.formatStepLogs(stepLog);
-      deps.logContentProvider.update(uri, content);
+      deps.logContentProvider.update(uri, GiteaInternalApi.formatStepLogs(stepLog));
     } else {
       deps.logContentProvider.update(uri, '(No log output for this step)');
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (message.includes('404') && fallbackRunId !== undefined) {
-      try {
-        const stepLog = await internalApi.getStepLogs(runRef.repo, fallbackRunId, jobIndex, stepIndex, totalSteps);
-        if (stepLog) {
-          deps.logContentProvider.update(uri, GiteaInternalApi.formatStepLogs(stepLog));
-          return;
-        }
-      } catch {
-        // fall through to error message
-      }
-    }
     deps.logContentProvider.update(uri, `Failed to load step logs: ${message}`);
   }
 }
@@ -265,13 +252,17 @@ export async function startStepLogStream(
   const controller = { stopped: false };
   liveLogStreams.set(uri.toString(), controller);
 
-  // Internal API may use run id or run_number (Gitea versions differ); try id first, switch to run_number on 404
-  let internalRunId: number | string = runRef.id;
-  const fallbackRunId = runRef.runNumber != null && runRef.runNumber !== runRef.id ? runRef.runNumber : undefined;
+  // Internal (web UI) API only accepts run_number in the URL
+  if (runRef.runNumber == null) {
+    deps.logContentProvider.update(uri, 'Step logs unavailable: run_number not available');
+    stopLogStream(uri);
+    return;
+  }
+  const runNumber = runRef.runNumber;
   let lastContent = '';
   while (!controller.stopped && isActive()) {
     try {
-      const stepLog = await internalApi.getStepLogs(runRef.repo, internalRunId, jobIndex, stepIndex, totalSteps);
+      const stepLog = await internalApi.getStepLogs(runRef.repo, runNumber, jobIndex, stepIndex, totalSteps);
       if (stepLog) {
         const content = GiteaInternalApi.formatStepLogs(stepLog);
         if (content !== lastContent) {
@@ -281,21 +272,7 @@ export async function startStepLogStream(
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (message.includes('404') && fallbackRunId !== undefined) {
-        internalRunId = fallbackRunId;
-        try {
-          const stepLog = await internalApi.getStepLogs(runRef.repo, internalRunId, jobIndex, stepIndex, totalSteps);
-          if (stepLog) {
-            const content = GiteaInternalApi.formatStepLogs(stepLog);
-            lastContent = content;
-            deps.logContentProvider.update(uri, content);
-          }
-        } catch {
-          deps.logContentProvider.update(uri, `Failed to load step logs: ${message}`);
-        }
-      } else {
-        deps.logContentProvider.update(uri, `Failed to load step logs: ${message}`);
-      }
+      deps.logContentProvider.update(uri, `Failed to load step logs: ${message}`);
     }
 
     const settings = deps.getSettings();
@@ -305,7 +282,7 @@ export async function startStepLogStream(
   // Final fetch after loop ends
   if (!controller.stopped) {
     try {
-      const stepLog = await internalApi.getStepLogs(runRef.repo, internalRunId, jobIndex, stepIndex, totalSteps);
+      const stepLog = await internalApi.getStepLogs(runRef.repo, runNumber, jobIndex, stepIndex, totalSteps);
       if (stepLog) {
         const content = GiteaInternalApi.formatStepLogs(stepLog);
         deps.logContentProvider.update(uri, content);

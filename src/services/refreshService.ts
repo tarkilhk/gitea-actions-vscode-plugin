@@ -443,15 +443,10 @@ async function hydrateJobStepsFromOfficialApi(
  * Hydrates job steps using the internal Gitea web UI API.
  *
  * Gitea's official API never populates the `steps` field, so we fall back to the
- * same internal endpoint the Gitea web UI uses. This worked on older Gitea versions,
- * but recent versions (≈1.24+) gated this endpoint behind browser session cookies
- * (e.g. `gitea_incredible`). With only a PAT we get 404.
+ * same internal endpoint the Gitea web UI uses. Gitea only allows PAT access to
+ * that endpoint for public repos; for private repos the run page returns 404.
  *
- * We still try because:
- * 1. Older Gitea versions may still allow PAT access.
- * 2. A future Gitea version might re-enable token access.
- *
- * On 404/401, we set `job.stepsError` so the UI can display a graceful message.
+ * On 404/401 we set `job.stepsError` so the UI can show a clear message (private vs public).
  *
  * @param runRef - Reference containing repo and run identifiers
  * @param jobs - Jobs to hydrate with step data
@@ -465,9 +460,12 @@ export async function hydrateJobSteps(
   options?: { forceRefresh?: boolean }
 ): Promise<number> {
   const { repo } = runRef;
-  // Internal API URL: older Gitea used run_number, newer may use run id; we try id first, then run_number on 404
-  const internalRunId = runRef.id;
-  const fallbackRunId = runRef.runNumber != null && runRef.runNumber !== runRef.id ? runRef.runNumber : undefined;
+  // Internal (web UI) API only accepts run_number in the URL (e.g. .../actions/runs/24). Db id is not used.
+  if (runRef.runNumber == null) {
+    logDebug(`Skipping step hydration for ${repo.owner}/${repo.name}: run_number not available`);
+    return 0;
+  }
+  const runNumber = runRef.runNumber;
 
   // Find jobs that need step hydration (skip jobs with stepsError unless forcing refresh)
   const jobsToHydrate: Array<{ job: Job; jobIndex: number }> = [];
@@ -500,59 +498,35 @@ export async function hydrateJobSteps(
     // Only use cache if not forcing refresh and job is not active
     // Active jobs need fresh data, and forceRefresh means we want latest status
     const shouldUseCache = !options?.forceRefresh && !isActive;
-    const cacheKeyForRun = (runId: number | string) => `${repo.owner}/${repo.name}#${runId}#${jobIndex}`;
-    const cachedSteps = shouldUseCache ? state.jobStepsCache.get(cacheKeyForRun(internalRunId)) : undefined;
+    const cacheKey = `${repo.owner}/${repo.name}#${runNumber}#${jobIndex}`;
+    const cachedSteps = shouldUseCache ? state.jobStepsCache.get(cacheKey) : undefined;
 
     if (cachedSteps?.length) {
       job.steps = cachedSteps;
       return;
     }
     try {
-      logDebug(`Fetching steps via internal API for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} run ${internalRunId}`);
-      const result = await internalApi.getJobWithSteps(repo, internalRunId, jobIndex);
+      logDebug(`Fetching steps via internal API for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} run ${runNumber}`);
+      const result = await internalApi.getJobWithSteps(repo, runNumber, jobIndex);
       if (result.steps?.length) {
         job.steps = result.steps;
-        state.jobStepsCache.set(cacheKeyForRun(internalRunId), result.steps);
-        logDebug(`Fetched ${result.steps.length} steps for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} run ${internalRunId}`);
+        state.jobStepsCache.set(cacheKey, result.steps);
+        logDebug(`Fetched ${result.steps.length} steps for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} run ${runNumber}`);
       } else {
-        logWarn(`Internal API returned no steps for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} run ${internalRunId}`);
+        logWarn(`Internal API returned no steps for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} run ${runNumber}`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const isSessionGated = message.includes('404') || message.includes('401');
-      
-      // Try fallback with run_number if we got 404 (older Gitea URL scheme)
-      if (message.includes('404') && fallbackRunId !== undefined) {
-        try {
-          logDebug(`Internal API 404 with run ${internalRunId}, retrying with run_number ${fallbackRunId}`);
-          const result = await internalApi.getJobWithSteps(repo, fallbackRunId, jobIndex);
-          if (result.steps?.length) {
-            job.steps = result.steps;
-            state.jobStepsCache.set(cacheKeyForRun(fallbackRunId), result.steps);
-            logDebug(`Fetched ${result.steps.length} steps for job ${jobIndex} (${job.name}) using run_number ${fallbackRunId}`);
-            return;
-          }
-        } catch (fallbackError) {
-          const fallbackMsg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-          if (fallbackMsg.includes('404') || fallbackMsg.includes('401')) {
-            // Both attempts failed with session-gated error
-            job.stepsError = 'Steps unavailable: Gitea requires browser session (not supported with PAT)';
-            logWarn(`Steps blocked by session auth for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name}`);
-            return;
-          }
-        }
-      }
-      
-      // Set graceful error if session-gated
-      if (isSessionGated) {
-        job.stepsError = 'Steps unavailable: Gitea requires browser session (not supported with PAT)';
-        logWarn(`Steps blocked by session auth for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name}`);
+      const isAccessDenied = message.includes('404') || message.includes('401') || message.includes('403');
+      job.stepsError = 'Steps unavailable: Gitea does not expose step details for private repos (gitea only supports public repos when using a PAT).';
+      if (isAccessDenied) {
+        logWarn(`Steps unavailable for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} (Gitea does not expose step details for private repos)`);
       } else {
-        logWarn(`Failed to fetch steps via internal API for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} run ${internalRunId}: ${message}`);
+        logWarn(`Failed to fetch steps via internal API for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} run ${runNumber}: ${message}`);
       }
     }
   });
-  logDebug(`Hydrated steps for ${jobsToHydrate.length} job(s) in ${repo.owner}/${repo.name} run ${internalRunId} in ${Date.now() - hydrateStart}ms`);
+  logDebug(`Hydrated steps for ${jobsToHydrate.length} job(s) in ${repo.owner}/${repo.name} run ${runNumber} in ${Date.now() - hydrateStart}ms`);
   return jobsToHydrate.length;
 }
 

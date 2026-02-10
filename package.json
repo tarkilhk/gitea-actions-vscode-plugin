@@ -175,6 +175,11 @@
         "icon": "$(list-unordered)"
       },
       {
+        "command": "giteaActions.diagnoseSteps",
+        "title": "Gitea Actions: Diagnose Steps",
+        "icon": "$(beaker)"
+      },
+      {
         "command": "giteaActions.openInBrowser",
         "title": "Open in Browser",
         "icon": "$(globe)"
@@ -237,6 +242,11 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "giteaActions.diagnoseSteps",
+          "when": "(view == giteaActions.runs || view == giteaActions.runsPinned) && (viewItem == giteaRepo || viewItem == giteaWorkflowGroup || viewItem == giteaRun || viewItem == giteaRunFailed || viewItem == giteaJob || viewItem == giteaJobFailed)",
+          "group": "inline@1"
+        },
         {
           "command": "giteaActions.viewJobLogs",
           "when": "(view == giteaActions.runs || view == giteaActions.runsPinned) && (viewItem == giteaJob || viewItem == giteaJobFailed || viewItem == giteaStep || viewItem == giteaStepFailed)",

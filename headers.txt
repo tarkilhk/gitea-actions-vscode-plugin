@@ -1,0 +1,10 @@
+HTTP/1.1 404 Not Found
+cache-control: max-age=0, private, must-revalidate, no-transform
+content-type: text/plain;charset=utf-8
+set-cookie: i_like_gitea=594d603b8d39cd3a; Path=/; HttpOnly; Secure; SameSite=Lax
+set-cookie: _csrf=hR7ixnGVaSkbeZ_YKHa8XXKdrpU6MTc3MDcxNDEyODU2NDk0NjQ5Ng; Path=/; Max-Age=86400; HttpOnly; Secure; SameSite=Lax
+x-content-type-options: nosniff
+x-frame-options: SAMEORIGIN
+date: Tue, 10 Feb 2026 09:02:08 GMT
+content-length: 11
+
