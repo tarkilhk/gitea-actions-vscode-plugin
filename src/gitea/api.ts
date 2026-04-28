@@ -120,8 +120,8 @@ export class GiteaApi {
   }
 
   async listAccessibleRepos(limit = 50): Promise<{ owner: string; name: string; htmlUrl?: string }[]> {
-    const perPage = Math.max(1, limit);
-    const maxPages = 10;
+    const perPage = Math.max(1, Math.min(100, limit));
+    const maxPages = 100;
     const unique = new Map<string, { owner: string; name: string; htmlUrl?: string }>();
 
     try {
@@ -141,8 +141,11 @@ export class GiteaApi {
           break;
         }
       }
-    } catch {
+    } catch (err) {
       // Fallback for older instances where /repos/search may be unavailable.
+      if (!isEndpointUnavailable(err)) {
+        throw err;
+      }
       const payload = await this.client.getJson<unknown>(`/api/v1/user/repos?limit=${limit}`);
       const repos = pickArray<unknown>(payload, (payload as { repos?: unknown[] })?.repos ?? []);
       repos
@@ -342,4 +345,9 @@ function mapAccessibleRepo(raw: unknown): { owner: string; name: string; htmlUrl
     name,
     htmlUrl: (r.html_url ?? r.clone_url ?? r.ssh_url) as string | undefined
   };
+}
+
+function isEndpointUnavailable(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /\b(404|405|410|501)\b/.test(message);
 }
