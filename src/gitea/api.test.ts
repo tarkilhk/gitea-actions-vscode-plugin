@@ -292,4 +292,18 @@ describe('listAccessibleRepos', () => {
     expect(paths[1]).toContain('/api/v1/user/repos');
     expect(repos).toEqual([{ owner: 'bob', name: 'owned-repo', htmlUrl: undefined }]);
   });
+
+  it('does not fallback to /user/repos for non-availability errors', async () => {
+    const paths: string[] = [];
+    const client = {
+      getJson: async (path: string) => {
+        paths.push(path);
+        throw new Error('Request failed (401): unauthorized');
+      }
+    } as any;
+
+    const api = new GiteaApi(client);
+    await expect(api.listAccessibleRepos(50)).rejects.toThrow('401');
+    expect(paths).toEqual(['/api/v1/repos/search?limit=50&page=1&private=true']);
+  });
 });
