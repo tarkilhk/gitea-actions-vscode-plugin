@@ -120,22 +120,43 @@ export class GiteaApi {
   }
 
   async listAccessibleRepos(limit = 50): Promise<{ owner: string; name: string; htmlUrl?: string }[]> {
-    const payload = await this.client.getJson<unknown>(`/api/v1/user/repos?limit=${limit}`);
-    const repos = pickArray<unknown>(payload, (payload as { repos?: unknown[] })?.repos ?? []);
-    return repos
-      .map((repo) => {
-        const r = repo as Record<string, unknown>;
-        const owner = (r.owner as { login?: string; username?: string } | undefined)?.login ?? 
-                     (r.owner as { login?: string; username?: string } | undefined)?.username ?? 
-                     (r.owner as string | undefined) ?? 
-                     (r.namespace as string | undefined);
-        return {
-          owner: owner ?? '',
-          name: (r.name as string | undefined) ?? '',
-          htmlUrl: (r.html_url ?? r.clone_url ?? r.ssh_url) as string | undefined
-        };
-      })
-      .filter((r) => r.owner && r.name);
+    const perPage = Math.max(1, limit);
+    const maxPages = 10;
+    const unique = new Map<string, { owner: string; name: string; htmlUrl?: string }>();
+
+    try {
+      for (let page = 1; page <= maxPages; page += 1) {
+        const payload = await this.client.getJson<unknown>(
+          `/api/v1/repos/search?limit=${perPage}&page=${page}&private=true`
+        );
+        const repos = pickArray<unknown>(payload, (payload as { repos?: unknown[] })?.repos ?? []);
+        const mapped = repos.map((repo) => mapAccessibleRepo(repo)).filter((repo) => repo.owner && repo.name);
+        mapped.forEach((repo) => {
+          const key = `${repo.owner}/${repo.name}`.toLowerCase();
+          if (!unique.has(key)) {
+            unique.set(key, repo);
+          }
+        });
+        if (repos.length < perPage) {
+          break;
+        }
+      }
+    } catch {
+      // Fallback for older instances where /repos/search may be unavailable.
+      const payload = await this.client.getJson<unknown>(`/api/v1/user/repos?limit=${limit}`);
+      const repos = pickArray<unknown>(payload, (payload as { repos?: unknown[] })?.repos ?? []);
+      repos
+        .map((repo) => mapAccessibleRepo(repo))
+        .filter((repo) => repo.owner && repo.name)
+        .forEach((repo) => {
+          const key = `${repo.owner}/${repo.name}`.toLowerCase();
+          if (!unique.has(key)) {
+            unique.set(key, repo);
+          }
+        });
+    }
+
+    return Array.from(unique.values());
   }
 
   async listRuns(repo: RepoRef, limit: number): Promise<WorkflowRun[]> {
@@ -306,5 +327,19 @@ function mapVariable(raw: unknown): ActionVariable {
     data: (r.data as string) ?? (r.value as string) ?? '',
     ownerId: (r.owner_id as number | undefined) ?? (r.ownerId as number | undefined),
     repoId: (r.repo_id as number | undefined) ?? (r.repoId as number | undefined)
+  };
+}
+
+function mapAccessibleRepo(raw: unknown): { owner: string; name: string; htmlUrl?: string } {
+  const r = raw as Record<string, unknown>;
+  const ownerObject = (r.owner as { login?: string; username?: string; name?: string } | undefined);
+  const fullName = (r.full_name as string | undefined) ?? (r.fullName as string | undefined);
+  const name = (r.name as string | undefined) ?? '';
+  const ownerFromFullName = fullName?.includes('/') ? fullName.split('/', 1)[0] : undefined;
+  const owner = ownerObject?.login ?? ownerObject?.username ?? ownerObject?.name ?? ownerFromFullName ?? (r.owner as string | undefined) ?? (r.namespace as string | undefined) ?? '';
+  return {
+    owner,
+    name,
+    htmlUrl: (r.html_url ?? r.clone_url ?? r.ssh_url) as string | undefined
   };
 }
