@@ -4,6 +4,7 @@ import { RepoRef } from '../gitea/models';
 import { VariablesRootNode, VariableNode } from '../views/nodes';
 import { logError, logWarn } from '../util/logging';
 import { SettingsTreeProvider } from '../views/settingsTreeProvider';
+import { normalizeEscapedNewlines } from '../util/inputNormalization';
 
 export type VariableCommandContext = {
   showToast: (message: string, type?: 'info' | 'warning' | 'error') => void;
@@ -90,7 +91,12 @@ export async function createVariable(
   });
   
   try {
-    await api.createVariable(node.repo, name.trim(), value.trim(), description?.trim());
+    await api.createVariable(
+      node.repo,
+      name.trim(),
+      normalizeEscapedNewlines(value),
+      description?.trim()
+    );
     ctx.showToast(`Variable ${name} created successfully.`);
     await refreshVariablesForRepo(node.repo, ctx);
   } catch (error) {
@@ -144,7 +150,12 @@ export async function updateVariable(
   });
   
   try {
-    await api.updateVariable(node.repo, node.name, value.trim(), description?.trim());
+    await api.updateVariable(
+      node.repo,
+      node.name,
+      normalizeEscapedNewlines(value),
+      description?.trim()
+    );
     ctx.showToast(`Variable ${node.name} updated successfully.`);
     await refreshVariablesForRepo(node.repo, ctx);
   } catch (error) {

@@ -4,6 +4,7 @@ import { RepoRef } from '../gitea/models';
 import { SecretsRootNode, SecretNode } from '../views/nodes';
 import { logError, logWarn } from '../util/logging';
 import { SettingsTreeProvider } from '../views/settingsTreeProvider';
+import { normalizeEscapedNewlines } from '../util/inputNormalization';
 
 export type SecretCommandContext = {
   showToast: (message: string, type?: 'info' | 'warning' | 'error') => void;
@@ -94,7 +95,12 @@ export async function createSecret(
   });
   
   try {
-    await api.createOrUpdateSecret(node.repo, name.trim(), data.trim(), description?.trim());
+    await api.createOrUpdateSecret(
+      node.repo,
+      name.trim(),
+      normalizeEscapedNewlines(data),
+      description?.trim()
+    );
     ctx.showToast(`Secret ${name} created successfully.`);
     await refreshSecretsForRepo(node.repo, ctx);
   } catch (error) {
@@ -137,7 +143,12 @@ export async function updateSecret(
   });
   
   try {
-    await api.createOrUpdateSecret(node.repo, node.name, data.trim(), description?.trim());
+    await api.createOrUpdateSecret(
+      node.repo,
+      node.name,
+      normalizeEscapedNewlines(data),
+      description?.trim()
+    );
     ctx.showToast(`Secret ${node.name} updated successfully.`);
     await refreshSecretsForRepo(node.repo, ctx);
   } catch (error) {
