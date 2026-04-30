@@ -12,8 +12,23 @@ describe('normalizeEscapedNewlines', () => {
     expect(normalizeEscapedNewlines(value)).toBe('line1\nline2');
   });
 
-  it('converts escaped carriage return sequences into carriage returns', () => {
+  it('converts escaped carriage return sequences into newlines', () => {
     const value = 'line1\\rline2';
-    expect(normalizeEscapedNewlines(value)).toBe('line1\rline2');
+    expect(normalizeEscapedNewlines(value)).toBe('line1\nline2');
+  });
+
+  it('normalizes real CRLF sequences to newlines', () => {
+    const value = 'line1\r\nline2';
+    expect(normalizeEscapedNewlines(value)).toBe('line1\nline2');
+  });
+
+  it('normalizes real CR sequences to newlines', () => {
+    const value = 'line1\rline2';
+    expect(normalizeEscapedNewlines(value)).toBe('line1\nline2');
+  });
+
+  it('keeps ordinary single-line values unchanged', () => {
+    const value = 'single-line-value';
+    expect(normalizeEscapedNewlines(value)).toBe('single-line-value');
   });
 });

@@ -5,6 +5,7 @@ import { SecretsRootNode, SecretNode } from '../views/nodes';
 import { logError, logWarn } from '../util/logging';
 import { SettingsTreeProvider } from '../views/settingsTreeProvider';
 import { normalizeEscapedNewlines } from '../util/inputNormalization';
+import { promptValueForm } from '../ui/valueForm';
 
 export type SecretCommandContext = {
   showToast: (message: string, type?: 'info' | 'warning' | 'error') => void;
@@ -59,13 +60,18 @@ export async function createSecret(
     return;
   }
   
-  const name = await vscode.window.showInputBox({
-    prompt: 'Secret name',
-    placeHolder: 'SECRET_NAME',
-    validateInput: (value) => {
-      if (!value.trim()) {
-        return 'Secret name cannot be empty';
-      }
+  const form = await promptValueForm({
+    title: 'Create Secret',
+    submitLabel: 'Create Secret',
+    includeName: true,
+    nameLabel: 'Secret name',
+    namePlaceholder: 'SECRET_NAME',
+    descriptionLabel: 'Description (optional)',
+    descriptionPlaceholder: 'Optional description',
+    valueLabel: 'Secret value',
+    valuePlaceholder: 'Paste or type secret value',
+    isSecret: true,
+    validateName: (value) => {
       if (!/^[A-Z_][A-Z0-9_]*$/.test(value)) {
         return 'Secret name should be uppercase letters, numbers, and underscores only';
       }
@@ -73,35 +79,18 @@ export async function createSecret(
     }
   });
   
-  if (!name) {
+  if (!form || !form.name) {
     return;
   }
-  
-  const data = await vscode.window.showInputBox({
-    prompt: 'Secret value',
-    placeHolder: 'Enter secret value',
-    password: true,
-    ignoreFocusOut: true,
-    validateInput: (value) => (!value.trim() ? 'Secret value cannot be empty' : undefined)
-  });
-  
-  if (!data) {
-    return;
-  }
-  
-  const description = await vscode.window.showInputBox({
-    prompt: 'Description (optional)',
-    placeHolder: 'Optional description'
-  });
   
   try {
     await api.createOrUpdateSecret(
       node.repo,
-      name.trim(),
-      normalizeEscapedNewlines(data),
-      description?.trim()
+      form.name,
+      normalizeEscapedNewlines(form.value),
+      form.description
     );
-    ctx.showToast(`Secret ${name} created successfully.`);
+    ctx.showToast(`Secret ${form.name} created successfully.`);
     await refreshSecretsForRepo(node.repo, ctx);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -124,30 +113,30 @@ export async function updateSecret(
     return;
   }
   
-  const data = await vscode.window.showInputBox({
-    prompt: 'New secret value',
-    placeHolder: 'Enter new secret value',
-    password: true,
-    ignoreFocusOut: true,
-    validateInput: (value) => (!value.trim() ? 'Secret value cannot be empty' : undefined)
+  const form = await promptValueForm({
+    title: 'Update Secret',
+    submitLabel: 'Update Secret',
+    includeName: false,
+    nameLabel: 'Secret name',
+    namePlaceholder: '',
+    descriptionLabel: 'Description (optional)',
+    descriptionPlaceholder: 'Optional description',
+    descriptionValue: node.description,
+    valueLabel: 'Secret value',
+    valuePlaceholder: 'Enter new secret value',
+    isSecret: true
   });
   
-  if (!data) {
+  if (!form) {
     return;
   }
-  
-  const description = await vscode.window.showInputBox({
-    prompt: 'Description (optional)',
-    placeHolder: node.description || 'Optional description',
-    value: node.description
-  });
   
   try {
     await api.createOrUpdateSecret(
       node.repo,
       node.name,
-      normalizeEscapedNewlines(data),
-      description?.trim()
+      normalizeEscapedNewlines(form.value),
+      form.description
     );
     ctx.showToast(`Secret ${node.name} updated successfully.`);
     await refreshSecretsForRepo(node.repo, ctx);
