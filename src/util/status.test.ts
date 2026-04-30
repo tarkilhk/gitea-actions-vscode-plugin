@@ -123,7 +123,7 @@ describe('statusIcon', () => {
 
   it('returns skipped icon for skipped conclusion', () => {
     const icon = statusIcon({ status: 'completed', conclusion: 'skipped' });
-    expect(icon.id).toBe('debug-step-over');
+    expect(icon.id).toBe('dash');
     expect(icon.color).toBe('descriptionForeground');
   });
 
