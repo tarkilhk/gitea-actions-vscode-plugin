@@ -1,3 +1,19 @@
+## [2.4.0] - 2026-04-30
+
+### ✨ Added
+
+- Address issue #3 (724e5ad)
+- Normalize escaped newlines for secrets and variables (4c4e2c1)
+
+### 🐛 Fixed
+
+- update Gitea Actions diagnose steps and status icons (f3ba09b)
+- Fix allAccessible discovery to query accessible repos via /repos/search (b9096a9)
+
+### 📝 Changed
+
+- Tighten allAccessible fallback behavior and pagination (b68adca)
+
 ## [2.3.12] - 2026-02-10
 
 ### ✨ Added
