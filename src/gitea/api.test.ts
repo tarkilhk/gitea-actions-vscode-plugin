@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pickArray, mapRun, mapJob, mapStep } from './api';
+import { GiteaApi, pickArray, mapRun, mapJob, mapStep } from './api';
 import { RepoRef } from './models';
 
 const mockRepo: RepoRef = {
@@ -239,5 +239,71 @@ describe('mapStep', () => {
     const raw = { id: 1, title: 'Custom Title' };
     const result = mapStep(raw);
     expect(result.name).toBe('Custom Title');
+  });
+});
+
+describe('listAccessibleRepos', () => {
+  it('loads all accessible repos via /repos/search pagination', async () => {
+    const paths: string[] = [];
+    const client = {
+      getJson: async (path: string) => {
+        paths.push(path);
+        if (path.includes('page=1')) {
+          return {
+            data: [
+              { owner: { username: 'alice' }, name: 'repo-one', html_url: 'https://example/alice/repo-one' },
+              { full_name: 'org/repo-two', name: 'repo-two' }
+            ]
+          };
+        }
+        return {
+          data: [{ owner: { login: 'alice' }, name: 'repo-one' }]
+        };
+      }
+    } as any;
+
+    const api = new GiteaApi(client);
+    const repos = await api.listAccessibleRepos(2);
+
+    expect(paths[0]).toContain('/api/v1/repos/search');
+    expect(paths).toHaveLength(2);
+    expect(repos).toEqual([
+      { owner: 'alice', name: 'repo-one', htmlUrl: 'https://example/alice/repo-one' },
+      { owner: 'org', name: 'repo-two', htmlUrl: undefined }
+    ]);
+  });
+
+  it('falls back to /user/repos if /repos/search fails', async () => {
+    const paths: string[] = [];
+    const client = {
+      getJson: async (path: string) => {
+        paths.push(path);
+        if (path.includes('/repos/search')) {
+          throw new Error('404');
+        }
+        return [{ owner: { login: 'bob' }, name: 'owned-repo' }];
+      }
+    } as any;
+
+    const api = new GiteaApi(client);
+    const repos = await api.listAccessibleRepos(50);
+
+    expect(paths[0]).toContain('/api/v1/repos/search');
+    expect(paths[1]).toContain('/api/v1/user/repos');
+    expect(repos).toEqual([{ owner: 'bob', name: 'owned-repo', htmlUrl: undefined }]);
+  });
+
+  it('does not fallback to /user/repos for non-availability errors', async () => {
+    const paths: string[] = [];
+    const client = {
+      getJson: async (path: string) => {
+        paths.push(path);
+        throw new Error('Request failed (401): unauthorized');
+      }
+    } as any;
+
+    const api = new GiteaApi(client);
+    await expect(api.listAccessibleRepos(50)).rejects.toThrow('401');
+    expect(paths).toEqual(['/api/v1/repos/search?limit=50&page=1&private=true']);
   });
 });
