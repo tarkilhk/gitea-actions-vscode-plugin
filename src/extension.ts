@@ -7,7 +7,6 @@ import { SettingsTreeProvider } from './views/settingsTreeProvider';
 import { ActionsNode } from './views/nodes';
 import { registerCommands } from './controllers/commands';
 import { RefreshController } from './controllers/refreshController';
-import { setVerboseLogging } from './util/logging';
 
 // Commands
 import {
@@ -110,7 +109,6 @@ function getRefreshState(): RefreshServiceState {
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  setVerboseLogging(true);
   settings = getSettings();
   secretStorage = context.secrets;
   cachedToken = await getToken(secretStorage);

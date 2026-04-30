@@ -2,7 +2,7 @@
 
 > Monitor your CI/CD pipelines without leaving your editor
 
-[![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/tarkil.gitea-actions-vscode-plugin?label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=tarkil.gitea-actions-vscode-plugin)
+[![VS Marketplace](https://img.shields.io/badge/VS%20Marketplace-available-007ACC)](https://marketplace.visualstudio.com/items?itemName=tarkil.gitea-actions-vscode-plugin)
 [![Open VSX](https://img.shields.io/open-vsx/v/tarkil/gitea-actions-vscode-plugin?label=Open%20VSX)](https://open-vsx.org/extension/tarkil/gitea-actions-vscode-plugin)
 [![License](https://img.shields.io/github/license/tarkilhk/gitea-actions-vscode-plugin)](LICENSE)
 
@@ -134,6 +134,10 @@ Job **steps** (the list under each job) are unfortunately limited by Gitea's API
 **Bottom line:** If you see "Steps unavailable: Gitea does not expose step details for private repos", this is a Gitea limitation: step breakdown works for public repos only. Job logs still work via the official logs API for all repos — only the per-step breakdown is affected.
 
 **Workaround for older Gitea:** If you're running Gitea 1.23 or earlier, steps should still work.
+
+### Diagnose Steps
+
+If you're unsure why steps aren't loading, run **"Gitea Actions: Diagnose Steps"** from the Command Palette (`Ctrl+Shift+P`). It probes the official and internal APIs for a specific run and prints a detailed report to the **Gitea Actions** output channel, showing exactly which endpoint failed and why.
 
 ## Security
 

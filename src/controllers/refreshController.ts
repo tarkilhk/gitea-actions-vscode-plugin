@@ -1,3 +1,5 @@
+import { logError } from '../util/logging';
+
 type IntervalProvider = () => { runningSeconds: number; idleSeconds: number };
 
 export class RefreshController {
@@ -35,7 +37,7 @@ export class RefreshController {
       try {
         anyRunning = await this.refreshFn();
       } catch (error) {
-        console.error('Gitea Actions refresh failed', error);
+        logError('Gitea Actions refresh failed', error);
       }
       const { runningSeconds, idleSeconds } = this.intervalProvider();
       const nextDelay = (anyRunning ? runningSeconds : idleSeconds) * 1000;

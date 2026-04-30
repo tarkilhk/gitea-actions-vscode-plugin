@@ -176,16 +176,22 @@ function updateChangelog(version, date) {
   // Remove "Unreleased" section if it exists
   existingChangelog = existingChangelog.replace(/## \[Unreleased\].*?(?=## |$)/s, '');
   
-  // Create header if file doesn't exist
-  let header = '';
-  if (!existingChangelog.includes('# Changelog')) {
-    header = '# Changelog\n\n';
-    header += 'All notable changes to this project will be documented in this file.\n\n';
-    header += 'The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),\n';
-    header += 'and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n\n';
+  let updatedChangelog;
+  if (existingChangelog.includes('# Changelog')) {
+    // Insert new entry after the header block, before the first version entry
+    updatedChangelog = existingChangelog.replace(
+      /^(# Changelog[\s\S]*?)(?=## \[)/m,
+      `$1${newEntry}`
+    );
+  } else {
+    // No header yet — prepend header + new entry
+    const header =
+      '# Changelog\n\n' +
+      'All notable changes to this project will be documented in this file.\n\n' +
+      'The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),\n' +
+      'and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n\n';
+    updatedChangelog = header + newEntry + existingChangelog;
   }
-  
-  const updatedChangelog = header + newEntry + existingChangelog;
   fs.writeFileSync(changelogPath, updatedChangelog);
   
   return newEntry;
