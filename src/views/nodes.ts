@@ -308,6 +308,11 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
       item.description = node.description || undefined;
       item.contextValue = 'giteaSecret';
       item.tooltip = node.description ? `${node.name}\n${node.description}` : node.name;
+      item.command = {
+        command: 'giteaActions.updateSecret',
+        title: 'Update Secret',
+        arguments: [node]
+      };
       return item;
     }
     case 'variablesRoot': {
@@ -327,6 +332,11 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
       if (node.description) tooltipParts.push(node.description);
       if (node.value) tooltipParts.push(`Value: ${node.value}`);
       item.tooltip = tooltipParts.join('\n');
+      item.command = {
+        command: 'giteaActions.updateVariable',
+        title: 'Update Variable',
+        arguments: [node]
+      };
       return item;
     }
   }

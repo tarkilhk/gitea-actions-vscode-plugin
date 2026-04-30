@@ -4,6 +4,8 @@ import { RepoRef } from '../gitea/models';
 import { VariablesRootNode, VariableNode } from '../views/nodes';
 import { logError, logWarn } from '../util/logging';
 import { SettingsTreeProvider } from '../views/settingsTreeProvider';
+import { normalizeEscapedNewlines } from '../util/inputNormalization';
+import { promptValueForm } from '../ui/valueForm';
 
 export type VariableCommandContext = {
   showToast: (message: string, type?: 'info' | 'warning' | 'error') => void;
@@ -58,40 +60,31 @@ export async function createVariable(
     return;
   }
   
-  const name = await vscode.window.showInputBox({
-    prompt: 'Variable name',
-    placeHolder: 'VARIABLE_NAME',
-    validateInput: (value) => {
-      if (!value.trim()) {
-        return 'Variable name cannot be empty';
-      }
-      return undefined;
-    }
+  const form = await promptValueForm({
+    title: 'Create Variable',
+    submitLabel: 'Create Variable',
+    includeName: true,
+    nameLabel: 'Variable name',
+    namePlaceholder: 'VARIABLE_NAME',
+    descriptionLabel: 'Description (optional)',
+    descriptionPlaceholder: 'Optional description',
+    valueLabel: 'Variable value',
+    valuePlaceholder: 'Enter variable value',
+    isSecret: false
   });
   
-  if (!name) {
+  if (!form || !form.name) {
     return;
   }
-  
-  const value = await vscode.window.showInputBox({
-    prompt: 'Variable value',
-    placeHolder: 'Enter variable value',
-    ignoreFocusOut: true,
-    validateInput: (val) => (!val.trim() ? 'Variable value cannot be empty' : undefined)
-  });
-  
-  if (!value) {
-    return;
-  }
-  
-  const description = await vscode.window.showInputBox({
-    prompt: 'Description (optional)',
-    placeHolder: 'Optional description'
-  });
   
   try {
-    await api.createVariable(node.repo, name.trim(), value.trim(), description?.trim());
-    ctx.showToast(`Variable ${name} created successfully.`);
+    await api.createVariable(
+      node.repo,
+      form.name,
+      normalizeEscapedNewlines(form.value),
+      form.description
+    );
+    ctx.showToast(`Variable ${form.name} created successfully.`);
     await refreshVariablesForRepo(node.repo, ctx);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -125,26 +118,32 @@ export async function updateVariable(
     }
   }
   
-  const value = await vscode.window.showInputBox({
-    prompt: 'New variable value',
-    placeHolder: 'Enter new variable value',
-    value: currentValue,
-    ignoreFocusOut: true,
-    validateInput: (val) => (!val.trim() ? 'Variable value cannot be empty' : undefined)
+  const form = await promptValueForm({
+    title: 'Update Variable',
+    submitLabel: 'Update Variable',
+    includeName: false,
+    nameLabel: 'Variable name',
+    namePlaceholder: '',
+    descriptionLabel: 'Description (optional)',
+    descriptionPlaceholder: 'Optional description',
+    descriptionValue: node.description,
+    valueLabel: 'Variable value',
+    valuePlaceholder: 'Enter new variable value',
+    valueValue: currentValue,
+    isSecret: false
   });
   
-  if (!value) {
+  if (!form) {
     return;
   }
   
-  const description = await vscode.window.showInputBox({
-    prompt: 'Description (optional)',
-    placeHolder: node.description || 'Optional description',
-    value: node.description
-  });
-  
   try {
-    await api.updateVariable(node.repo, node.name, value.trim(), description?.trim());
+    await api.updateVariable(
+      node.repo,
+      node.name,
+      normalizeEscapedNewlines(form.value),
+      form.description
+    );
     ctx.showToast(`Variable ${node.name} updated successfully.`);
     await refreshVariablesForRepo(node.repo, ctx);
   } catch (error) {
