@@ -248,4 +248,3 @@ export async function diagnoseSteps(node: ActionsNode | undefined, ctx: Diagnose
   channel.appendLine('- If official steps is null/0 AND internal returns 401/404 or login HTML, steps are session-gated in Gitea web UI for this repo.');
   channel.appendLine('- If repo.private is true, that strongly correlates with web UI gating unless you have browser cookies.');
 }
-
