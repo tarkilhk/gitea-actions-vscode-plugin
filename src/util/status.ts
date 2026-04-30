@@ -68,7 +68,7 @@ export function statusIcon(item: HasStatusConclusion): StatusIcon {
     case 'cancelled':
       return { id: 'circle-slash', color: 'descriptionForeground' };
     case 'skipped':
-      return { id: 'debug-step-over', color: 'descriptionForeground' };
+      return { id: 'dash', color: 'descriptionForeground' };
     case 'unknown':
     default:
       return { id: 'question', color: 'descriptionForeground' };
