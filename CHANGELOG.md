@@ -7,14 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.5.0] - 2026-05-02
 
+### ✨ Added
+
+- **Pin workflows to the status bar** — In the **Workflows** view, open the context menu on a workflow group and choose **Pin to Status Bar**. Each pinned workflow gets its own status bar item beside the main **Gitea: … running, … failed** summary. The icon reflects the **latest run** for that workflow (queued, in progress, success, failure, cancelled, or unknown if no runs yet). Hover the item for repository, workflow name, run number, and status; click it to open that run in the browser when Gitea supplies a URL, or open the Gitea Actions view otherwise. Pins persist across VS Code sessions. Use **Unpin from Status Bar** on pinned workflow groups to remove them.
+
 ### 🐛 Fixed
 
-- Fix lint issues in diagnostics and API tests (64f42c1)
+- Resolved ESLint issues in diagnostics and API tests.
 
 ### 📝 Changed
 
-- Refactor Gitea Actions workflow handling (4807135)
-- Cleanup (98d3813)
+- README: VS Marketplace badge styling and a brief **Diagnose Steps** section (command palette + output channel).
 
 ## [2.4.0] - 2026-04-30
 
