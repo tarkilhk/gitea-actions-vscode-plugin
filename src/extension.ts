@@ -73,15 +73,15 @@ let settings: ExtensionSettings;
 let cachedToken: string | undefined;
 let secretStorage: vscode.SecretStorage;
 const workspaceProvider = new ActionsTreeProvider('runs');
-const pinnedProvider = new ActionsTreeProvider('workflows');
+const workflowsProvider = new ActionsTreeProvider('workflows');
 const settingsProvider = new SettingsTreeProvider();
 let workspaceTree: vscode.TreeView<ActionsNode>;
-let pinnedTree: vscode.TreeView<ActionsNode>;
+let workflowsTree: vscode.TreeView<ActionsNode>;
 let settingsTree: vscode.TreeView<ActionsNode>;
 let refreshController: RefreshController | undefined;
 let windowFocused = true;
 let workspaceVisible = true;
-let pinnedVisible = true;
+let workflowsVisible = true;
 let settingsVisible = true;
 let pollingEnabled = true;
 const lastRunsByRepo = new Map<string, WorkflowRun[]>();
@@ -101,7 +101,7 @@ function getRefreshState(): RefreshServiceState {
     cachedToken,
     secretStorage,
     workspaceProvider,
-    pinnedProvider,
+    workflowsProvider,
     settingsProvider,
     lastRunsByRepo,
     workflowNameCache,
@@ -121,18 +121,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     treeDataProvider: workspaceProvider,
     showCollapseAll: true
   });
-  pinnedTree = vscode.window.createTreeView('giteaActions.runsPinned', {
-    treeDataProvider: pinnedProvider,
+  workflowsTree = vscode.window.createTreeView('giteaActions.workflows', {
+    treeDataProvider: workflowsProvider,
     showCollapseAll: true
   });
   settingsTree = vscode.window.createTreeView('giteaActions.settings', {
     treeDataProvider: settingsProvider,
     showCollapseAll: true
   });
-  context.subscriptions.push(workspaceTree, pinnedTree, settingsTree);
+  context.subscriptions.push(workspaceTree, workflowsTree, settingsTree);
   windowFocused = vscode.window.state.focused;
   workspaceVisible = workspaceTree.visible;
-  pinnedVisible = pinnedTree.visible;
+  workflowsVisible = workflowsTree.visible;
   settingsVisible = settingsTree.visible;
   context.subscriptions.push(
     workspaceTree.onDidExpandElement((e) => {
@@ -142,12 +142,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     workspaceTree.onDidCollapseElement((e) => {
       workspaceProvider.markCollapsed(e.element);
     }),
-    pinnedTree.onDidExpandElement((e) => {
-      pinnedProvider.markExpanded(e.element);
+    workflowsTree.onDidExpandElement((e) => {
+      workflowsProvider.markExpanded(e.element);
       handleExpand(e.element);
     }),
-    pinnedTree.onDidCollapseElement((e) => {
-      pinnedProvider.markCollapsed(e.element);
+    workflowsTree.onDidCollapseElement((e) => {
+      workflowsProvider.markCollapsed(e.element);
     })
   );
 
@@ -233,8 +233,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         void doRefresh();
       }
     }),
-    pinnedTree.onDidChangeVisibility((e) => {
-      pinnedVisible = e.visible;
+    workflowsTree.onDidChangeVisibility((e) => {
+      workflowsVisible = e.visible;
       updatePollingState();
       if (e.visible) {
         void doRefresh();
@@ -275,11 +275,11 @@ function createTokenContext() {
       settingsProvider.setTokenStatus(!!token);
       if (!token) {
         workspaceProvider.clear();
-        pinnedProvider.clear();
+        workflowsProvider.clear();
         void getConfigErrors(getRefreshState()).then((errors) => {
           if (errors.length > 0) {
             workspaceProvider.setConfigErrors(errors);
-            pinnedProvider.setConfigErrors(errors);
+            workflowsProvider.setConfigErrors(errors);
           }
         });
         void getConfigError(getRefreshState()).then((error) => {
@@ -330,7 +330,7 @@ function createLogStreamContext() {
         getSettings: () => settings,
         updateJobs: (r, rid, jobs) => {
           workspaceProvider.updateJobs(r, rid, jobs);
-          pinnedProvider.updateJobs(r, rid, jobs);
+          workflowsProvider.updateJobs(r, rid, jobs);
         },
         hydrateJobSteps: (ref, jobs) => hydrateJobSteps(ref, jobs, state),
         scheduleJobRefresh: (ref, jobs) => scheduleJobRefresh(ref, jobs, state, settings)
@@ -418,12 +418,12 @@ async function handleExpand(element: ActionsNode): Promise<void> {
 async function refreshExpandedRuns(): Promise<void> {
   const state = getRefreshState();
   const workspaceRuns = state.workspaceProvider.getExpandedRunRefsNeedingJobs();
-  const pinnedRuns = state.pinnedProvider.getExpandedRunRefsNeedingJobs();
-  if (!workspaceRuns.length && !pinnedRuns.length) {
+  const workflowsRuns = state.workflowsProvider.getExpandedRunRefsNeedingJobs();
+  if (!workspaceRuns.length && !workflowsRuns.length) {
     return;
   }
   const unique = new Map<string, RunRef>();
-  for (const runRef of [...workspaceRuns, ...pinnedRuns]) {
+  for (const runRef of [...workspaceRuns, ...workflowsRuns]) {
     const key = `${runRef.repo.owner}/${runRef.repo.name}#${runRef.id}`;
     unique.set(key, runRef);
   }
@@ -431,7 +431,7 @@ async function refreshExpandedRuns(): Promise<void> {
 }
 
 function shouldPoll(): boolean {
-  return windowFocused || workspaceVisible || pinnedVisible || settingsVisible;
+  return windowFocused || workspaceVisible || workflowsVisible || settingsVisible;
 }
 
 function updatePollingState(): void {
