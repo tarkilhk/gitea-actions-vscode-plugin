@@ -3,7 +3,7 @@
   "displayName": "Gitea Actions",
   "description": "View and inspect Gitea Actions workflow runs directly from VS Code / Cursor. Monitor CI/CD pipelines, check job status, view logs, and manage secrets and variables for your Gitea Actions workflows.",
   "icon": "resources/gitea-actions-icon.png",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "publisher": "tarkil",
   "license": "MIT",
   "repository": {
@@ -83,7 +83,7 @@
         },
         "giteaActions.refresh.idleIntervalSeconds": {
           "type": "number",
-          "title": "Runs (Idle) \u2014 Refresh Interval (seconds)",
+          "title": "Runs (Idle) — Refresh Interval (seconds)",
           "order": 5,
           "default": 15,
           "minimum": 10,
@@ -91,7 +91,7 @@
         },
         "giteaActions.refresh.runningIntervalSeconds": {
           "type": "number",
-          "title": "Runs (Active) \u2014 Refresh Interval (seconds)",
+          "title": "Runs (Active) — Refresh Interval (seconds)",
           "order": 6,
           "default": 15,
           "minimum": 5,
@@ -99,7 +99,7 @@
         },
         "giteaActions.refresh.jobsIntervalSeconds": {
           "type": "number",
-          "title": "Jobs & Steps \u2014 Refresh Interval (seconds)",
+          "title": "Jobs & Steps — Refresh Interval (seconds)",
           "order": 7,
           "default": 5,
           "minimum": 2,
@@ -107,7 +107,7 @@
         },
         "giteaActions.logs.pollIntervalSeconds": {
           "type": "number",
-          "title": "Logs \u2014 Poll Interval (seconds)",
+          "title": "Logs — Poll Interval (seconds)",
           "order": 8,
           "default": 5,
           "minimum": 2,
