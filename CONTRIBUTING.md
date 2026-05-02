@@ -179,7 +179,7 @@ The refresh system is optimized to preserve tree expansion state:
 Releases are automated via GitHub Actions when a release is created on GitHub.
 
 ```bash
-# Create a release (bumps version, updates changelog, creates tag)
+# Create a release (edit CHANGELOG.md for the new version first, then bump version + tag)
 npm run release:patch  # 1.0.0 → 1.0.1
 npm run release:minor  # 1.0.0 → 1.1.0
 npm run release:major  # 1.0.0 → 2.0.0
