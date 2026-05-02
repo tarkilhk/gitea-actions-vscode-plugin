@@ -48,7 +48,10 @@ import {
 } from './services/logStreamService';
 import {
   initStatusBar,
+  initPinnedWorkflows,
+  pinWorkflow,
   showToast,
+  unpinWorkflow,
   updateStatusBar
 } from './services/statusBarService';
 import {
@@ -150,6 +153,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Initialize status bar
   const statusBar = initStatusBar();
+  initPinnedWorkflows(context.globalState);
   context.subscriptions.push(statusBar);
 
   // Register log content provider
@@ -180,7 +184,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     updateVariable: (node) => updateVariable(node, createVariableContext()),
     deleteVariable: (node) => deleteVariable(node, createVariableContext()),
     openBaseUrlSettings: () => openBaseUrlSettings(),
-    openSettings: () => openSettings()
+    openSettings: () => openSettings(),
+    pinWorkflowToStatusBar: async (node) => {
+      if (node.type !== 'workflowGroup') {
+        return;
+      }
+      const workflowName = node.runs[0]?.workflowName ?? node.runs[0]?.name ?? node.name;
+      await pinWorkflow(node.repo, workflowName);
+      pinnedProvider.refresh();
+      updateStatusBar(undefined, lastRunsByRepo);
+    },
+    unpinWorkflowFromStatusBar: async (node) => {
+      if (node.type !== 'workflowGroup') {
+        return;
+      }
+      const workflowName = node.runs[0]?.workflowName ?? node.runs[0]?.name ?? node.name;
+      await unpinWorkflow(node.repo, workflowName);
+      pinnedProvider.refresh();
+      updateStatusBar(undefined, lastRunsByRepo);
+    }
   });
 
   // Configuration change listener

@@ -153,7 +153,8 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
     case 'workflowGroup': {
       const item = new vscode.TreeItem(node.name, vscode.TreeItemCollapsibleState.Collapsed);
       item.id = `workflow-group-${node.repo.owner}-${node.repo.name}-${node.name}`;
-      item.contextValue = 'giteaWorkflowGroup';
+      const workflowName = node.runs[0]?.workflowName ?? node.runs[0]?.name ?? node.name;
+      item.contextValue = isWorkflowPinned(node.repo, workflowName) ? 'giteaWorkflowGroupPinned' : 'giteaWorkflowGroup';
       item.iconPath = repoIcon;
       item.description = `${node.runs.length} run${node.runs.length === 1 ? '' : 's'}`;
       return item;
