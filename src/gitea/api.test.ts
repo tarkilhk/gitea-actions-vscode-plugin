@@ -251,8 +251,8 @@ describe('listAccessibleRepos', () => {
         if (path.includes('page=1')) {
           return {
             data: [
-              { owner: { username: 'alice' }, name: 'repo-one', html_url: 'https://example/alice/repo-one' },
-              { full_name: 'org/repo-two', name: 'repo-two' }
+              { owner: { username: 'alice' }, name: 'repo-one', ['html_url']: 'https://example/alice/repo-one' },
+              { ['full_name']: 'org/repo-two', name: 'repo-two' }
             ]
           };
         }
@@ -260,7 +260,7 @@ describe('listAccessibleRepos', () => {
           data: [{ owner: { login: 'alice' }, name: 'repo-one' }]
         };
       }
-    } as any;
+    } as { getJson: (path: string) => Promise<unknown> };
 
     const api = new GiteaApi(client);
     const repos = await api.listAccessibleRepos(2);
@@ -283,7 +283,7 @@ describe('listAccessibleRepos', () => {
         }
         return [{ owner: { login: 'bob' }, name: 'owned-repo' }];
       }
-    } as any;
+    } as { getJson: (path: string) => Promise<unknown> };
 
     const api = new GiteaApi(client);
     const repos = await api.listAccessibleRepos(50);
@@ -300,7 +300,7 @@ describe('listAccessibleRepos', () => {
         paths.push(path);
         throw new Error('Request failed (401): unauthorized');
       }
-    } as any;
+    } as { getJson: (path: string) => Promise<unknown> };
 
     const api = new GiteaApi(client);
     await expect(api.listAccessibleRepos(50)).rejects.toThrow('401');

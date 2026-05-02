@@ -171,11 +171,12 @@ export async function diagnoseSteps(node: ActionsNode | undefined, ctx: Diagnose
   });
 
   try {
-    const repoMeta = await diagClient.getJson<{ private?: boolean; default_branch?: string; permissions?: unknown }>(
+    const repoMeta = await diagClient.getJson<{ private?: boolean; permissions?: unknown } & Record<string, unknown>>(
       `/api/v1/repos/${repo.owner}/${repo.name}`
     );
     channel.appendLine(`repo.private: ${String(!!repoMeta.private)}`);
-    if (repoMeta.default_branch) channel.appendLine(`repo.default_branch: ${repoMeta.default_branch}`);
+    const defaultBranch = typeof repoMeta['default_branch'] === 'string' ? repoMeta['default_branch'] : undefined;
+    if (defaultBranch) channel.appendLine(`repo.default_branch: ${defaultBranch}`);
   } catch (e) {
     channel.appendLine(`repo metadata: ERROR: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -231,7 +232,7 @@ export async function diagnoseSteps(node: ActionsNode | undefined, ctx: Diagnose
       }
     };
 
-    let internal = await tryInternal(runRef.id);
+    const internal = await tryInternal(runRef.id);
     if (!internal.ok && internal.err?.includes('404') && runRef.runNumber != null && String(runRef.runNumber) !== String(runRef.id)) {
       const retry = await tryInternal(runRef.runNumber);
       channel.appendLine(`internal POST .../actions/runs/${runRef.id}/jobs/${jobIndex}: ERROR: ${internal.err}`);

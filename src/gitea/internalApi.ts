@@ -19,7 +19,7 @@
 import { GiteaClient } from './client';
 import { RepoRef, Step, StepLog } from './models';
 import { normalizeConclusion, normalizeStatus } from '../util/status';
-import { logDebug, logWarn } from '../util/logging';
+import { logDebug } from '../util/logging';
 
 const CONTENT_TYPE_HEADER = 'content-type';
 const X_REQUESTED_WITH_HEADER = 'x-requested-with';

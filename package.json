@@ -83,7 +83,7 @@
         },
         "giteaActions.refresh.idleIntervalSeconds": {
           "type": "number",
-          "title": "Runs (Idle) — Refresh Interval (seconds)",
+          "title": "Runs (Idle) \u2014 Refresh Interval (seconds)",
           "order": 5,
           "default": 15,
           "minimum": 10,
@@ -91,7 +91,7 @@
         },
         "giteaActions.refresh.runningIntervalSeconds": {
           "type": "number",
-          "title": "Runs (Active) — Refresh Interval (seconds)",
+          "title": "Runs (Active) \u2014 Refresh Interval (seconds)",
           "order": 6,
           "default": 15,
           "minimum": 5,
@@ -99,7 +99,7 @@
         },
         "giteaActions.refresh.jobsIntervalSeconds": {
           "type": "number",
-          "title": "Jobs & Steps — Refresh Interval (seconds)",
+          "title": "Jobs & Steps \u2014 Refresh Interval (seconds)",
           "order": 7,
           "default": 5,
           "minimum": 2,
@@ -107,7 +107,7 @@
         },
         "giteaActions.logs.pollIntervalSeconds": {
           "type": "number",
-          "title": "Logs — Poll Interval (seconds)",
+          "title": "Logs \u2014 Poll Interval (seconds)",
           "order": 8,
           "default": 5,
           "minimum": 2,
@@ -230,6 +230,16 @@
       {
         "command": "giteaActions.openSettings",
         "title": "Gitea Actions: Open Settings"
+      },
+      {
+        "command": "giteaActions.pinWorkflowToStatusBar",
+        "title": "Pin to Status Bar",
+        "icon": "$(pin)"
+      },
+      {
+        "command": "giteaActions.unpinWorkflowFromStatusBar",
+        "title": "Unpin from Status Bar",
+        "icon": "$(pinned)"
       }
     ],
     "menus": {
@@ -290,6 +300,26 @@
           "command": "giteaActions.clearToken",
           "when": "view == giteaActions.settings && viewItem == giteaToken",
           "group": "inline@2"
+        },
+        {
+          "command": "giteaActions.pinWorkflowToStatusBar",
+          "when": "view == giteaActions.workflows && viewItem == giteaWorkflowGroup",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.pinWorkflowToStatusBar",
+          "when": "view == giteaActions.workflows && viewItem == giteaWorkflowGroup",
+          "group": "giteaActions_pin"
+        },
+        {
+          "command": "giteaActions.unpinWorkflowFromStatusBar",
+          "when": "view == giteaActions.workflows && viewItem == giteaWorkflowGroupPinned",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.unpinWorkflowFromStatusBar",
+          "when": "view == giteaActions.workflows && viewItem == giteaWorkflowGroupPinned",
+          "group": "giteaActions_pin"
         }
       ]
     }
