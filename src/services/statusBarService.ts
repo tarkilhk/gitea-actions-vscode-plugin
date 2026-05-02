@@ -23,8 +23,9 @@ function workflowTimestamp(run: WorkflowRun): string {
 }
 
 function latestRunForPinned(lastRunsByRepo: Map<string, WorkflowRun[]>, pinned: PinnedWorkflow): WorkflowRun | undefined {
-  const repoKey = `${pinned.repo.host}|${pinned.repo.owner}|${pinned.repo.name}`;
-  const runs = lastRunsByRepo.get(repoKey) ?? [];
+  // Must match refreshService.repoKey / ActionsTreeProvider repo keys used for lastRunsByRepo
+  const mapKey = `${pinned.repo.owner}/${pinned.repo.name}`;
+  const runs = lastRunsByRepo.get(mapKey) ?? [];
   return runs
     .filter((run) => (run.workflowName ?? run.name) === pinned.workflowName)
     .sort((a, b) => workflowTimestamp(b).localeCompare(workflowTimestamp(a)))[0];

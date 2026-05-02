@@ -191,7 +191,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       const workflowName = node.runs[0]?.workflowName ?? node.runs[0]?.name ?? node.name;
       await pinWorkflow(node.repo, workflowName);
-      pinnedProvider.refresh();
+      workflowsProvider.refresh();
       updateStatusBar(undefined, lastRunsByRepo);
     },
     unpinWorkflowFromStatusBar: async (node) => {
@@ -200,7 +200,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       const workflowName = node.runs[0]?.workflowName ?? node.runs[0]?.name ?? node.name;
       await unpinWorkflow(node.repo, workflowName);
-      pinnedProvider.refresh();
+      workflowsProvider.refresh();
       updateStatusBar(undefined, lastRunsByRepo);
     }
   });

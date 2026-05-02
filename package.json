@@ -303,11 +303,23 @@
         },
         {
           "command": "giteaActions.pinWorkflowToStatusBar",
-          "when": "view == giteaActions.runsPinned && viewItem == giteaWorkflowGroup"
+          "when": "view == giteaActions.workflows && viewItem == giteaWorkflowGroup",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.pinWorkflowToStatusBar",
+          "when": "view == giteaActions.workflows && viewItem == giteaWorkflowGroup",
+          "group": "giteaActions_pin"
         },
         {
           "command": "giteaActions.unpinWorkflowFromStatusBar",
-          "when": "view == giteaActions.runsPinned && viewItem == giteaWorkflowGroupPinned"
+          "when": "view == giteaActions.workflows && viewItem == giteaWorkflowGroupPinned",
+          "group": "inline"
+        },
+        {
+          "command": "giteaActions.unpinWorkflowFromStatusBar",
+          "when": "view == giteaActions.workflows && viewItem == giteaWorkflowGroupPinned",
+          "group": "giteaActions_pin"
         }
       ]
     }

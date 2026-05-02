@@ -12,6 +12,7 @@ import {
   settingsIcon
 } from './icons';
 import { formatAgo, formatDateTime, formatDuration } from '../util/time';
+import { isWorkflowPinned } from '../services/statusBarService';
 
 export type RunNode = {
   type: 'run';
