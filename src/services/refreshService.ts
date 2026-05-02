@@ -24,7 +24,7 @@ export type RefreshServiceState = {
   cachedToken: string | undefined;
   secretStorage: vscode.SecretStorage;
   workspaceProvider: ActionsTreeProvider;
-  pinnedProvider: ActionsTreeProvider;
+  workflowsProvider: ActionsTreeProvider;
   settingsProvider: SettingsTreeProvider;
   lastRunsByRepo: Map<string, WorkflowRun[]>;
   workflowNameCache: Map<string, Map<string, string>>;
@@ -46,7 +46,7 @@ export function resetRefreshCaches(state: RefreshServiceState): void {
   state.jobStepsCache.clear();
   state.workflowNameCache.clear();
   state.workspaceProvider.resetJobCaches();
-  state.pinnedProvider.resetJobCaches();
+  state.workflowsProvider.resetJobCaches();
   state.lastRepoKeys = undefined;
 }
 
@@ -167,10 +167,10 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
   if (!api) {
     const configErrors = await getConfigErrors(state);
     state.workspaceProvider.clear();
-    state.pinnedProvider.clear();
+    state.workflowsProvider.clear();
     if (configErrors.length > 0) {
       state.workspaceProvider.setConfigErrors(configErrors);
-      state.pinnedProvider.setConfigErrors(configErrors);
+      state.workflowsProvider.setConfigErrors(configErrors);
     }
     state.lastRunsByRepo.clear();
     state.lastRepoKeys = undefined;
@@ -186,7 +186,7 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
   const reposChanged = hasRepoListChanged(state.lastRepoKeys, newRepoKeys);
   if (reposChanged) {
     state.workspaceProvider.setRepositories(repos);
-    state.pinnedProvider.setRepositories(repos);
+    state.workflowsProvider.setRepositories(repos);
     state.lastRepoKeys = newRepoKeys;
     logDebug(`Repo list changed, updated tree providers`);
   }
@@ -208,7 +208,7 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
       state.workspaceProvider.isRepoInErrorState(repo);
     if (needsLoadingIndicator) {
       state.workspaceProvider.setRepoLoading(repo);
-      state.pinnedProvider.setRepoLoading(repo);
+      state.workflowsProvider.setRepoLoading(repo);
     }
     try {
       const runStart = Date.now();
@@ -223,7 +223,7 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
         }
       });
       state.workspaceProvider.updateRuns(repo, limitedRuns);
-      state.pinnedProvider.updateRuns(repo, limitedRuns);
+      state.workflowsProvider.updateRuns(repo, limitedRuns);
       state.lastRunsByRepo.set(key, limitedRuns);
       logDebug(`Runs fetched for ${repo.owner}/${repo.name}: ${limitedRuns.length} in ${Date.now() - runStart}ms`);
       if (limitedRuns.some((r) => isRunning(r.status))) {
@@ -238,7 +238,7 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       state.workspaceProvider.setRepoError(repo, message);
-      state.pinnedProvider.setRepoError(repo, message);
+      state.workflowsProvider.setRepoError(repo, message);
       logWarn(`Failed to refresh ${repo.owner}/${repo.name}: ${message}`);
     }
   });
@@ -246,11 +246,11 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
   // Retry loading jobs for expanded runs that still need them
   // This handles cases where initial job load failed or user expanded while offline
   const workspaceExpandedNeeding = state.workspaceProvider.getExpandedRunRefsNeedingJobs();
-  const pinnedExpandedNeeding = state.pinnedProvider.getExpandedRunRefsNeedingJobs();
+  const workflowsExpandedNeeding = state.workflowsProvider.getExpandedRunRefsNeedingJobs();
   
   // Combine and deduplicate by run key
   const expandedNeedingMap = new Map<string, RunRef>();
-  for (const runRef of [...workspaceExpandedNeeding, ...pinnedExpandedNeeding]) {
+  for (const runRef of [...workspaceExpandedNeeding, ...workflowsExpandedNeeding]) {
     const key = `${runRef.repo.owner}/${runRef.repo.name}#${runRef.id}`;
     if (!expandedNeedingMap.has(key)) {
       expandedNeedingMap.set(key, runRef);
@@ -371,7 +371,7 @@ export async function fetchJobsForRun(
   const error = await getConfigError(state);
   if (error) {
     state.workspaceProvider.setRunJobsError(repo, runId, error, options?.runNode);
-    state.pinnedProvider.setRunJobsError(repo, runId, error, options?.runNode);
+    state.workflowsProvider.setRunJobsError(repo, runId, error, options?.runNode);
     return;
   }
   const api = await ensureApi(state);
@@ -380,7 +380,7 @@ export async function fetchJobsForRun(
   }
   if (!options?.refreshOnly) {
     state.workspaceProvider.setRunJobsLoading(repo, runId, options?.runNode);
-    state.pinnedProvider.setRunJobsLoading(repo, runId, options?.runNode);
+    state.workflowsProvider.setRunJobsLoading(repo, runId, options?.runNode);
   }
   const fetchPromise = (async () => {
     try {
@@ -396,14 +396,14 @@ export async function fetchJobsForRun(
       const hydrationNote = hydratedCount ? ` (steps fetched for ${hydratedCount} job${hydratedCount === 1 ? '' : 's'})` : '';
       logDebug(`Fetched ${jobs.length} jobs for ${repo.owner}/${repo.name} run ${runId} in ${elapsed}ms${hydrationNote}`);
       state.workspaceProvider.updateJobs(repo, runId, jobs, options?.runNode);
-      state.pinnedProvider.updateJobs(repo, runId, jobs, options?.runNode);
+      state.workflowsProvider.updateJobs(repo, runId, jobs, options?.runNode);
       scheduleJobRefresh(runRef, jobs, state, settings);
       return jobs;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logWarn(`Failed to fetch jobs for ${repo.owner}/${repo.name} run ${runId}: ${message}`);
       state.workspaceProvider.setRunJobsError(repo, runId, message, options?.runNode);
-      state.pinnedProvider.setRunJobsError(repo, runId, message, options?.runNode);
+      state.workflowsProvider.setRunJobsError(repo, runId, message, options?.runNode);
     } finally {
       state.inFlightJobFetch.delete(key);
     }
@@ -580,7 +580,7 @@ export function repoKey(repo: RepoRef): string {
 }
 
 function shouldPollJobsForRun(state: RefreshServiceState, repo: RepoRef, runId: number | string): boolean {
-  return state.workspaceProvider.shouldPollJobs(repo, runId) || state.pinnedProvider.shouldPollJobs(repo, runId);
+  return state.workspaceProvider.shouldPollJobs(repo, runId) || state.workflowsProvider.shouldPollJobs(repo, runId);
 }
 
 async function runWithLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
