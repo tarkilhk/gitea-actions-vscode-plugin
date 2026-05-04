@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.2] - 2026-05-04
+
+### 📝 Changed
+
+- Status bar summary now reports only **failed workflows** (latest run per workflow), deduplicated by workflow ID.
+- Pinned workflow identity now uses workflow ID to avoid stale name-based duplicates across updates.
+
+### ✨ Added
+
+- New command palette action: **Gitea Actions: Clear Pinned Workflows** to clear all pinned items and persisted pin state.
+
 ## [2.5.1] - 2026-05-02
 
 ### 🐛 Fixed
