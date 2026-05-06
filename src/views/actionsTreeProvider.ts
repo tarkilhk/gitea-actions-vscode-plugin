@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ActionsNode, MessageNode, RunNode, WorkflowGroupNode, JobNode, RepoNode, toTreeItem } from './nodes';
 import { RepoRef, RunRef, WorkflowRun, Job, toRunRef } from '../gitea/models';
+import { workflowIdentity } from '../util/workflow';
 
 type RepoKey = string;
 
@@ -20,6 +21,7 @@ type JobCache = {
 };
 
 type ProviderMode = 'runs' | 'workflows';
+
 
 export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode> {
   private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<ActionsNode | undefined | null | void>();
@@ -60,51 +62,44 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
           return [message];
         }
       }
-      const errored = Array.from(this.repos.values()).find((state) => state.state === 'error');
-      if (errored) {
-        const message: MessageNode = {
-          type: 'message',
-          repo: errored.repo,
-          message: errored.error ?? 'Failed to load runs',
-          severity: 'error'
-        };
-        return [message];
-      }
       if (this.mode === 'workflows') {
         const groups = this.buildWorkflowGroups();
         if (!groups.length) {
+          const errored = Array.from(this.repos.values()).find((s) => s.state === 'error');
           return [
             {
               type: 'message',
-              message: this.hasLoadingJobs() ? 'Loading jobs...' : 'No runs yet',
-              severity: 'info'
+              repo: errored?.repo,
+              message: errored ? (errored.error ?? 'Failed to load runs') :
+                this.hasLoadingJobs() ? 'Loading jobs...' : 'No runs yet',
+              severity: errored ? 'error' : 'info'
             } satisfies MessageNode
           ];
         }
         return groups;
       }
-      // For 'runs' mode: always show repo nodes at top level for consistency
-      const repoStates = Array.from(this.repos.values())
-        .filter((state) => state.state !== 'error');
-      if (!repoStates.length) {
-        return [
-          {
-            type: 'message',
-            message: this.hasLoadingJobs() ? 'Loading...' : 'No runs yet',
-            severity: 'info'
-          } satisfies MessageNode
-        ];
-      }
+      // For 'runs' mode: show all repo nodes (including errored) so each repo can display its own error
+      const allRepoStates = Array.from(this.repos.values());
       // Auto-expand when there's only one repo
-      const autoExpand = repoStates.length === 1;
-      return repoStates.map<RepoNode>((state) => this.getRepoNode(state.repo, autoExpand));
+      const autoExpand = allRepoStates.length === 1;
+      return allRepoStates.map<RepoNode>((state) => this.getRepoNode(state.repo, autoExpand));
     }
 
     // Handle repo node expansion - show runs for this repo
     if (element.type === 'repo') {
       const state = this.repos.get(repoKey(element.repo));
-      if (!state || state.state === 'error') {
+      if (!state) {
         return [];
+      }
+      if (state.state === 'error') {
+        return [
+          {
+            type: 'message',
+            repo: element.repo,
+            message: state.error ?? 'Failed to load runs',
+            severity: 'error'
+          } satisfies MessageNode
+        ];
       }
       if (!state.runs.length) {
         return [
@@ -216,10 +211,12 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
       } else {
         // In workflows mode, find the workflow group
         const workflowName = element.run.workflowName ?? element.run.name;
+        const workflowKey = workflowIdentity(element.run);
         return {
           type: 'workflowGroup',
           name: workflowName,
-          runs: [],
+          workflowKey,
+          runs: [element.run],
           repo: element.repo
         };
       }
@@ -638,7 +635,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     if (this.mode === 'workflows') {
       const groups = this.buildWorkflowGroups();
       for (const group of groups) {
-        const groupId = `workflow-group-${group.repo.owner}-${group.repo.name}-${group.name}`;
+        const groupId = `workflow-group-${group.repo.owner}-${group.repo.name}-${encodeURIComponent(group.workflowKey)}`;
         if (groupId === id) {
           return group;
         }
@@ -674,15 +671,16 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
   }
 
   private buildWorkflowGroups(): WorkflowGroupNode[] {
-    const groups = new Map<string, { name: string; repo: RepoRef; runs: { repo: RepoRef; run: WorkflowRun }[] }>();
+    const groups = new Map<string, { name: string; workflowKey: string; repo: RepoRef; runs: { repo: RepoRef; run: WorkflowRun }[] }>();
     for (const entry of this.collectRuns()) {
       const workflowName = entry.run.workflowName ?? entry.run.name;
+      const workflowKey = workflowIdentity(entry.run);
       const repoLabel = `${entry.repo.owner}/${entry.repo.name}`;
       const displayName = `${workflowName} - ${repoLabel}`;
-      const groupKey = `${repoLabel}::${workflowName}`;
-      const existing = groups.get(groupKey);
+      const mapKey = `${repoLabel}::${workflowKey}`;
+      const existing = groups.get(mapKey);
       if (!existing) {
-        groups.set(groupKey, { name: displayName, repo: entry.repo, runs: [entry] });
+        groups.set(mapKey, { name: displayName, workflowKey, repo: entry.repo, runs: [entry] });
       } else {
         existing.runs.push(entry);
       }
@@ -702,6 +700,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
     return ordered.map<WorkflowGroupNode>((group) => ({
       type: 'workflowGroup',
       name: group.name,
+      workflowKey: group.workflowKey,
       runs: group.runs.map((r) => r.run),
       repo: group.repo
     }));
@@ -709,7 +708,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionsNode>
 
   private hasLoadingJobs(): boolean {
     return Array.from(this.repos.values()).some((state) =>
-      Array.from(state.jobs.values()).some((cache) => cache.state === 'loading' || cache.state === 'unloaded')
+      Array.from(state.jobs.values()).some((cache) => cache.state === 'loading')
     );
   }
 

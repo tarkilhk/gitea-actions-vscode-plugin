@@ -180,11 +180,29 @@ describe('ActionsTreeProvider - Expansion State Preservation', () => {
       workflowsProvider.setRepositories([testRepo]);
       const run = createTestRun(123, 'test-workflow');
       run.workflowName = 'My Workflow';
+      run.workflowPath = '.gitea/workflows/my-workflow.yml';
       workflowsProvider.updateRuns(testRepo, [run]);
 
-      const node = workflowsProvider.findNodeById('workflow-group-test-test-repo-My Workflow - test/test-repo');
+      const node = workflowsProvider.findNodeById('workflow-group-test-test-repo-id%3Amy-workflow.yml');
       expect(node).toBeDefined();
       expect(node?.type).toBe('workflowGroup');
+    });
+
+    it('separates workflow groups that share name but have different workflow IDs', async () => {
+      const workflowsProvider = new ActionsTreeProvider('workflows');
+      workflowsProvider.setRepositories([testRepo]);
+      const runA = createTestRun(123, 'test-workflow');
+      runA.workflowName = 'CI';
+      runA.workflowPath = '.gitea/workflows/ci-main.yml';
+      const runB = createTestRun(456, 'test-workflow');
+      runB.workflowName = 'CI';
+      runB.workflowPath = '.gitea/workflows/ci-release.yml';
+      workflowsProvider.updateRuns(testRepo, [runA, runB]);
+
+      const roots = (await workflowsProvider.getChildren()) as ActionsNode[];
+      const groups = roots.filter((node): node is ActionsNode & { type: 'workflowGroup' } => node.type === 'workflowGroup');
+      expect(groups).toHaveLength(2);
+      expect(groups.map((group) => group.workflowKey).sort()).toEqual(['id:ci-main.yml', 'id:ci-release.yml']);
     });
   });
 
@@ -488,19 +506,15 @@ describe('ActionsTreeProvider - Targeted Refresh', () => {
       expect(provider.findNodeById('job-test-test-repo-123-456')).toBeDefined();
     });
 
-    it('should not refresh completed run when jobs are updated again', () => {
+    it('keeps job findable after multiple updateJobs calls', () => {
       provider.setRepositories([testRepo]);
       const run = createTestRun(123, 'test-workflow', 'completed');
       provider.updateRuns(testRepo, [run]);
-      
-      // First load
+
       const job = createTestJob(456, 'test-job');
       provider.updateJobs(testRepo, 123, [job]);
-      
-      // Update again with same jobs (should not refresh since run is completed)
       provider.updateJobs(testRepo, 123, [job]);
-      
-      // Job should still be findable
+
       expect(provider.findNodeById('job-test-test-repo-123-456')).toBeDefined();
     });
 

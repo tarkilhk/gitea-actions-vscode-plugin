@@ -122,6 +122,7 @@ Manage your extension configuration:
 - **Click any job** to view its complete logs in an editor tab
 - **Click a specific step** to view only that step's logs
 - **Click the status bar** to quickly jump to the Gitea Actions panel
+- **Main status summary** now shows **failed workflows only** (deduplicated by workflow ID, based on each workflow's latest run)
 
 ## Steps and Gitea Limitations
 

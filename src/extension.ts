@@ -47,6 +47,7 @@ import {
   isStepActive
 } from './services/logStreamService';
 import {
+  clearAllPinnedWorkflows,
   initStatusBar,
   initPinnedWorkflows,
   pinWorkflow,
@@ -189,8 +190,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (node.type !== 'workflowGroup') {
         return;
       }
-      const workflowName = node.runs[0]?.workflowName ?? node.runs[0]?.name ?? node.name;
-      await pinWorkflow(node.repo, workflowName);
+      const workflowId = workflowIdFromPath(node.runs[0]?.workflowPath);
+      if (!workflowId) {
+        showToast('Cannot pin workflow: missing workflow ID.', 'warning');
+        return;
+      }
+      const workflowName = node.runs[0]?.workflowName ?? node.runs[0]?.name ?? workflowId;
+      await pinWorkflow(node.repo, workflowId, workflowName);
       workflowsProvider.refresh();
       updateStatusBar(undefined, lastRunsByRepo);
     },
@@ -198,10 +204,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (node.type !== 'workflowGroup') {
         return;
       }
-      const workflowName = node.runs[0]?.workflowName ?? node.runs[0]?.name ?? node.name;
-      await unpinWorkflow(node.repo, workflowName);
+      const workflowId = workflowIdFromPath(node.runs[0]?.workflowPath);
+      if (!workflowId) {
+        showToast('Cannot unpin workflow: missing workflow ID.', 'warning');
+        return;
+      }
+      await unpinWorkflow(node.repo, workflowId);
       workflowsProvider.refresh();
       updateStatusBar(undefined, lastRunsByRepo);
+    },
+    clearPinnedWorkflows: async () => {
+      await clearAllPinnedWorkflows();
+      workflowsProvider.refresh();
+      updateStatusBar(undefined, lastRunsByRepo);
+      showToast('Pinned workflows cleared.', 'info');
     }
   });
 
@@ -447,3 +463,13 @@ function updatePollingState(): void {
     cancelJobRefreshTimers(getRefreshState());
   }
 }
+function workflowIdFromPath(path?: string): string | undefined {
+  if (!path) {
+    return undefined;
+  }
+  const beforeAt = path.split('@')[0] ?? path;
+  const parts = beforeAt.split('/');
+  const file = parts[parts.length - 1];
+  return file || undefined;
+}
+

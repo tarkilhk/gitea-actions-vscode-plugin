@@ -2,9 +2,11 @@ import * as vscode from 'vscode';
 import { RepoRef, WorkflowRun } from '../gitea/models';
 import { TOAST_TIMEOUT_MS } from '../config/constants';
 import { normalizeStatus } from '../util/status';
+import { workflowIdFromPath, workflowIdentity } from '../util/workflow';
 
 type PinnedWorkflow = {
   repo: RepoRef;
+  workflowId: string;
   workflowName: string;
 };
 
@@ -15,7 +17,7 @@ let pinnedWorkflows: PinnedWorkflow[] = [];
 const pinnedStatusItems = new Map<string, vscode.StatusBarItem>();
 
 function pinnedKey(workflow: PinnedWorkflow): string {
-  return `${workflow.repo.owner}/${workflow.repo.name}::${workflow.workflowName}`;
+  return `${workflow.repo.owner}/${workflow.repo.name}::${workflow.workflowId}`;
 }
 
 function workflowTimestamp(run: WorkflowRun): string {
@@ -27,7 +29,7 @@ function latestRunForPinned(lastRunsByRepo: Map<string, WorkflowRun[]>, pinned: 
   const mapKey = `${pinned.repo.owner}/${pinned.repo.name}`;
   const runs = lastRunsByRepo.get(mapKey) ?? [];
   return runs
-    .filter((run) => (run.workflowName ?? run.name) === pinned.workflowName)
+    .filter((run) => workflowIdFromPath(run.workflowPath) === pinned.workflowId)
     .sort((a, b) => workflowTimestamp(b).localeCompare(workflowTimestamp(a)))[0];
 }
 
@@ -55,8 +57,8 @@ export function initPinnedWorkflows(storage: vscode.Memento): void {
   pinnedWorkflows = Array.isArray(raw) ? raw : [];
 }
 
-export function pinWorkflow(repo: RepoRef, workflowName: string): Thenable<void> {
-  const target: PinnedWorkflow = { repo, workflowName };
+export function pinWorkflow(repo: RepoRef, workflowId: string, workflowName: string): Thenable<void> {
+  const target: PinnedWorkflow = { repo, workflowId, workflowName };
   const key = pinnedKey(target);
   if (!pinnedWorkflows.some((w) => pinnedKey(w) === key)) {
     pinnedWorkflows.push(target);
@@ -64,8 +66,8 @@ export function pinWorkflow(repo: RepoRef, workflowName: string): Thenable<void>
   return pinnedStorage?.update(PINNED_WORKFLOWS_KEY, pinnedWorkflows) ?? Promise.resolve();
 }
 
-export function unpinWorkflow(repo: RepoRef, workflowName: string): Thenable<void> {
-  const key = `${repo.owner}/${repo.name}::${workflowName}`;
+export function unpinWorkflow(repo: RepoRef, workflowId: string): Thenable<void> {
+  const key = `${repo.owner}/${repo.name}::${workflowId}`;
   pinnedWorkflows = pinnedWorkflows.filter((w) => pinnedKey(w) !== key);
   const existing = pinnedStatusItems.get(key);
   if (existing) {
@@ -75,9 +77,18 @@ export function unpinWorkflow(repo: RepoRef, workflowName: string): Thenable<voi
   return pinnedStorage?.update(PINNED_WORKFLOWS_KEY, pinnedWorkflows) ?? Promise.resolve();
 }
 
-export function isWorkflowPinned(repo: RepoRef, workflowName: string): boolean {
-  const key = `${repo.owner}/${repo.name}::${workflowName}`;
+export function isWorkflowPinned(repo: RepoRef, workflowId: string): boolean {
+  const key = `${repo.owner}/${repo.name}::${workflowId}`;
   return pinnedWorkflows.some((w) => pinnedKey(w) === key);
+}
+
+export function clearAllPinnedWorkflows(): Thenable<void> {
+  pinnedWorkflows = [];
+  for (const item of pinnedStatusItems.values()) {
+    item.dispose();
+  }
+  pinnedStatusItems.clear();
+  return pinnedStorage?.update(PINNED_WORKFLOWS_KEY, pinnedWorkflows) ?? Promise.resolve();
 }
 
 export function getStatusBarItem(): vscode.StatusBarItem | undefined {
@@ -97,13 +108,19 @@ export function updateStatusBar(text?: string, lastRunsByRepo?: Map<string, Work
   if (!lastRunsByRepo) {
     return;
   }
-  let running = 0;
-  let failed = 0;
-  for (const runs of lastRunsByRepo.values()) {
-    running += runs.filter((r) => isRunning(r.status)).length;
-    failed += runs.filter((r) => r.conclusion === 'failure').length;
+  const latestByWorkflow = new Map<string, WorkflowRun>();
+  for (const [repo, runs] of lastRunsByRepo.entries()) {
+    for (const run of runs) {
+      const identity = workflowIdentity(run);
+      const key = `${repo}::${identity}`;
+      const existing = latestByWorkflow.get(key);
+      if (!existing || workflowTimestamp(run) > workflowTimestamp(existing)) {
+        latestByWorkflow.set(key, run);
+      }
+    }
   }
-  statusBarItem.text = `Gitea: ${running} running, ${failed} failed`;
+  const failed = Array.from(latestByWorkflow.values()).filter((r) => r.conclusion === 'failure').length;
+  statusBarItem.text = `Gitea: ${failed} failed workflow${failed !== 1 ? 's' : ''}`;
   statusBarItem.tooltip = 'Open Gitea Actions view';
   statusBarItem.show();
 

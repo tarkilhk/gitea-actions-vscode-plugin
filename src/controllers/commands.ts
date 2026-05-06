@@ -21,6 +21,7 @@ export type CommandHandlers = {
   openSettings: () => Promise<void>;
   pinWorkflowToStatusBar: (node: ActionsNode) => Promise<void>;
   unpinWorkflowFromStatusBar: (node: ActionsNode) => Promise<void>;
+  clearPinnedWorkflows: () => Promise<void>;
 };
 
 export function registerCommands(context: vscode.ExtensionContext, handlers: CommandHandlers): void {
@@ -55,6 +56,7 @@ export function registerCommands(context: vscode.ExtensionContext, handlers: Com
     vscode.commands.registerCommand('giteaActions.openBaseUrlSettings', () => handlers.openBaseUrlSettings()),
     vscode.commands.registerCommand('giteaActions.openSettings', () => handlers.openSettings()),
     vscode.commands.registerCommand('giteaActions.pinWorkflowToStatusBar', (node: ActionsNode) => handlers.pinWorkflowToStatusBar(node)),
-    vscode.commands.registerCommand('giteaActions.unpinWorkflowFromStatusBar', (node: ActionsNode) => handlers.unpinWorkflowFromStatusBar(node))
+    vscode.commands.registerCommand('giteaActions.unpinWorkflowFromStatusBar', (node: ActionsNode) => handlers.unpinWorkflowFromStatusBar(node)),
+    vscode.commands.registerCommand('giteaActions.clearPinnedWorkflows', () => handlers.clearPinnedWorkflows())
   );
 }
