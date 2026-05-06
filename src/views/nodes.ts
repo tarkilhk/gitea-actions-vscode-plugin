@@ -13,16 +13,7 @@ import {
 } from './icons';
 import { formatAgo, formatDateTime, formatDuration } from '../util/time';
 import { isWorkflowPinned } from '../services/statusBarService';
-
-function workflowIdFromPath(path?: string): string | undefined {
-  if (!path) {
-    return undefined;
-  }
-  const beforeAt = path.split('@')[0] ?? path;
-  const parts = beforeAt.split('/');
-  const file = parts[parts.length - 1];
-  return file || undefined;
-}
+import { workflowIdFromPath } from '../util/workflow';
 
 export type RunNode = {
   type: 'run';
@@ -33,6 +24,7 @@ export type RunNode = {
 export type WorkflowGroupNode = {
   type: 'workflowGroup';
   name: string;
+  workflowKey: string;
   runs: WorkflowRun[];
   repo: RepoRef;
 };
@@ -163,7 +155,7 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
   switch (node.type) {
     case 'workflowGroup': {
       const item = new vscode.TreeItem(node.name, vscode.TreeItemCollapsibleState.Collapsed);
-      item.id = `workflow-group-${node.repo.owner}-${node.repo.name}-${node.name}`;
+      item.id = `workflow-group-${node.repo.owner}-${node.repo.name}-${encodeURIComponent(node.workflowKey)}`;
       const workflowId = workflowIdFromPath(node.runs[0]?.workflowPath);
       item.contextValue = workflowId && isWorkflowPinned(node.repo, workflowId) ? 'giteaWorkflowGroupPinned' : 'giteaWorkflowGroup';
       item.iconPath = repoIcon;

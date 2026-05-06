@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { RepoRef, WorkflowRun } from '../gitea/models';
 import { TOAST_TIMEOUT_MS } from '../config/constants';
 import { normalizeStatus } from '../util/status';
+import { workflowIdFromPath, workflowIdentity } from '../util/workflow';
 
 type PinnedWorkflow = {
   repo: RepoRef;
@@ -17,16 +18,6 @@ const pinnedStatusItems = new Map<string, vscode.StatusBarItem>();
 
 function pinnedKey(workflow: PinnedWorkflow): string {
   return `${workflow.repo.owner}/${workflow.repo.name}::${workflow.workflowId}`;
-}
-
-function workflowIdFromPath(path?: string): string | undefined {
-  if (!path) {
-    return undefined;
-  }
-  const beforeAt = path.split('@')[0] ?? path;
-  const parts = beforeAt.split('/');
-  const file = parts[parts.length - 1];
-  return file || undefined;
 }
 
 function workflowTimestamp(run: WorkflowRun): string {
@@ -120,11 +111,8 @@ export function updateStatusBar(text?: string, lastRunsByRepo?: Map<string, Work
   const latestByWorkflow = new Map<string, WorkflowRun>();
   for (const [repo, runs] of lastRunsByRepo.entries()) {
     for (const run of runs) {
-      const workflowId = workflowIdFromPath(run.workflowPath);
-      if (!workflowId) {
-        continue;
-      }
-      const key = `${repo}::${workflowId}`;
+      const identity = workflowIdentity(run);
+      const key = `${repo}::${identity}`;
       const existing = latestByWorkflow.get(key);
       if (!existing || workflowTimestamp(run) > workflowTimestamp(existing)) {
         latestByWorkflow.set(key, run);
@@ -132,7 +120,7 @@ export function updateStatusBar(text?: string, lastRunsByRepo?: Map<string, Work
     }
   }
   const failed = Array.from(latestByWorkflow.values()).filter((r) => r.conclusion === 'failure').length;
-  statusBarItem.text = `Gitea: ${failed} failed workflows`;
+  statusBarItem.text = `Gitea: ${failed} failed workflow${failed !== 1 ? 's' : ''}`;
   statusBarItem.tooltip = 'Open Gitea Actions view';
   statusBarItem.show();
 
