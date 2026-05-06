@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - New command palette action: **Gitea Actions: Clear Pinned Workflows** to clear all pinned items and persisted pin state.
 
+### 🐛 Fixed
+
+- Status bar now shows correct singular form: **"1 failed workflow"** instead of "1 failed workflows".
+- In multi-repo workspaces, a repo in error state no longer hides all other repos from the tree view. Each repo now displays its own error message inline when expanded.
+- **"Loading jobs…"** placeholder no longer appears for runs whose jobs have not been requested yet — the indicator now only shows while a fetch is actively in progress.
+- `getParent` for workflow-mode run nodes now returns a correctly populated parent group node (fixes potential "0 runs" description if VS Code renders the parent).
+
 ## [2.5.1] - 2026-05-02
 
 ### 🐛 Fixed
