@@ -217,18 +217,20 @@ try {
   const changelogPreview = ensureChangelog(newVersion);
   ensureTagDoesNotExist(tagName);
 
-  if (!hasAnyChanges()) {
-    throw new Error('No local changes to commit. Did you already commit this release?');
-  }
+  const shouldCommit = hasAnyChanges();
 
   console.log('Running release checks...');
   runInherit('npm test');
   runInherit('npm run lint');
   runInherit('npm run compile');
 
-  console.log('Committing release changes...');
-  runInherit('git add -A');
-  runInherit(`git commit -m "chore: release ${newVersion}"`);
+  if (shouldCommit) {
+    console.log('Committing release changes...');
+    runInherit('git add -A');
+    runInherit(`git commit -m "chore: release ${newVersion}"`);
+  } else {
+    console.log('No local changes to commit; releasing the current HEAD.');
+  }
 
   console.log(`Creating tag ${tagName}...`);
   runInherit(`git tag -a ${tagName} -m "Release ${tagName}"`);
