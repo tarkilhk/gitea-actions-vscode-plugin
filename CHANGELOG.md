@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-06-07
+
+### ✨ Added
+
+- Step log viewing now works with newer Gitea Actions APIs by using official job logs and step metadata before falling back to the internal web UI endpoint.
+- Added `giteaActions.logging.verbose` to enable verbose diagnostic logging, including API request traces.
+- The **Gitea Actions** output channel now records activation, configuration changes, refresh cycles, run fetches, and log-view attempts at info level.
+
+### 🐛 Fixed
+
+- Step log fallback now tries multiple run identifiers (`run_number`, run number from the job URL, then run ID), improving compatibility across private repositories and newer Gitea versions.
+- Step log failures now write a warning to the **Gitea Actions** output channel so API/internal fallback failures are visible during debugging.
+
 ## [2.5.4] - 2026-05-04
 
 ### 📝 Changed

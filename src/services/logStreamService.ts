@@ -2,9 +2,11 @@ import * as vscode from 'vscode';
 import { GiteaApi } from '../gitea/api';
 import { GiteaInternalApi } from '../gitea/internalApi';
 import { RepoRef, RunRef, Job, Step } from '../gitea/models';
+import { ExtractedStepLog, extractStepLogFromJobLog } from '../gitea/logs';
 import { JOBS_TIMEOUT_MS } from '../config/constants';
 import { normalizeStatus } from '../util/status';
 import { ExtensionSettings } from '../config/settings';
+import { logInfo, logWarn } from '../util/logging';
 
 /**
  * Scrolls the active editor showing the given log URI to the last line,
@@ -128,6 +130,7 @@ export async function startLogStream(
   jobId: number | string,
   deps: LogStreamDependencies
 ): Promise<void> {
+  logInfo(`Starting live job log stream for ${runRef?.repo.owner ?? 'unknown'}/${runRef?.repo.name ?? 'unknown'} job ${jobId}`);
   stopLogStream(uri);
   const controller = { stopped: false };
   liveLogStreams.set(uri.toString(), controller);
@@ -188,10 +191,75 @@ export type StepLogStreamDependencies = {
   getSettings: () => ExtensionSettings;
 };
 
+async function getOfficialStepLog(
+  api: GiteaApi,
+  runRef: RunRef,
+  job: Job,
+  stepIndex: number
+): Promise<ExtractedStepLog | undefined> {
+  const jobLog = await api.getJobLogs(runRef.repo, job.id);
+  return extractStepLogFromJobLog(jobLog, job.steps, stepIndex);
+}
+
+function internalRunCandidates(runRef: RunRef, job: Job): Array<number | string> {
+  const candidates: Array<number | string | undefined> = [runRef.runNumber];
+  const runMatch = job.htmlUrl?.match(/\/actions\/runs\/([^/?#]+)/);
+  if (runMatch) {
+    candidates.push(decodeURIComponent(runMatch[1]));
+  }
+  candidates.push(runRef.id);
+
+  const seen = new Set<string>();
+  return candidates.filter((candidate): candidate is number | string => {
+    if (candidate == null) {
+      return false;
+    }
+    const key = String(candidate);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+async function getInternalStepLog(
+  internalApi: GiteaInternalApi | undefined,
+  runRef: RunRef,
+  job: Job,
+  jobIndex: number,
+  stepIndex: number,
+  totalSteps: number
+): Promise<{ content?: string; error?: string }> {
+  if (!internalApi) {
+    return { error: 'internal API client unavailable' };
+  }
+
+  let lastError: string | undefined;
+  for (const runId of internalRunCandidates(runRef, job)) {
+    try {
+      const stepLog = await internalApi.getStepLogs(runRef.repo, runId, jobIndex, stepIndex, totalSteps);
+      if (stepLog) {
+        return { content: GiteaInternalApi.formatStepLogs(stepLog) };
+      }
+      lastError = `no step log returned for run ${runId}`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  return { error: lastError ?? 'run number unavailable' };
+}
+
 /**
- * Fetches and displays logs for a specific step using the internal API.
+ * Fetches and displays logs for a specific step.
+ *
+ * Gitea 1.26 exposes official step metadata but still documents only a
+ * job-level log download, so we first split the official job log locally and
+ * then fall back to the internal web UI endpoint.
  * 
- * @param internalApi Internal API client
+ * @param api Official API client
+ * @param internalApi Internal API client fallback
  * @param uri Virtual document URI
  * @param runRef Reference to the workflow run
  * @param jobIndex 0-based job index
@@ -200,36 +268,58 @@ export type StepLogStreamDependencies = {
  * @param deps Dependencies
  */
 export async function fetchStepLogs(
-  internalApi: GiteaInternalApi,
+  api: GiteaApi,
+  internalApi: GiteaInternalApi | undefined,
   uri: vscode.Uri,
   runRef: RunRef,
+  job: Job,
   jobIndex: number,
   stepIndex: number,
   totalSteps: number,
   deps: StepLogStreamDependencies
 ): Promise<void> {
-  // Internal (web UI) API only accepts run_number in the URL
-  if (runRef.runNumber == null) {
-    deps.logContentProvider.update(uri, 'Step logs unavailable: run_number not available');
+  logInfo(`Fetching step logs for ${runRef.repo.owner}/${runRef.repo.name} job ${job.id} step ${stepIndex}`);
+  let officialFallback: ExtractedStepLog | undefined;
+  let officialError: string | undefined;
+
+  try {
+    const official = await getOfficialStepLog(api, runRef, job, stepIndex);
+    if (official?.exact) {
+      deps.logContentProvider.update(uri, official.content);
+      return;
+    }
+    officialFallback = official;
+  } catch (error) {
+    officialError = error instanceof Error ? error.message : String(error);
+  }
+
+  const internal = await getInternalStepLog(internalApi, runRef, job, jobIndex, stepIndex, totalSteps);
+  if (internal.content) {
+    deps.logContentProvider.update(uri, internal.content);
     return;
   }
-  try {
-    const stepLog = await internalApi.getStepLogs(runRef.repo, runRef.runNumber, jobIndex, stepIndex, totalSteps);
-    if (stepLog) {
-      deps.logContentProvider.update(uri, GiteaInternalApi.formatStepLogs(stepLog));
-    } else {
-      deps.logContentProvider.update(uri, '(No log output for this step)');
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    deps.logContentProvider.update(uri, `Failed to load step logs: ${message}`);
+  if (internal.error && !officialFallback) {
+    logWarn(`Failed to load step logs for ${runRef.repo.owner}/${runRef.repo.name} job ${job.id} step ${stepIndex}: official API${officialError ? ` (${officialError})` : ''}; internal API (${internal.error})`);
+    deps.logContentProvider.update(
+      uri,
+      `Failed to load step logs: official API${officialError ? ` (${officialError})` : ''}; internal API (${internal.error})`
+    );
+    return;
   }
+
+  if (officialFallback) {
+    deps.logContentProvider.update(uri, officialFallback.content);
+    return;
+  }
+
+  deps.logContentProvider.update(uri, `Failed to load step logs${officialError ? `: ${officialError}` : ''}`);
 }
 
 /**
  * Starts streaming logs for a specific step, polling until the step/job completes.
  * 
- * @param internalApi Internal API client
+ * @param api Official API client
+ * @param internalApi Internal API client fallback
  * @param uri Virtual document URI
  * @param runRef Reference to the workflow run
  * @param jobIndex 0-based job index
@@ -239,40 +329,46 @@ export async function fetchStepLogs(
  * @param deps Dependencies
  */
 export async function startStepLogStream(
-  internalApi: GiteaInternalApi,
+  api: GiteaApi,
+  internalApi: GiteaInternalApi | undefined,
   uri: vscode.Uri,
   runRef: RunRef,
+  job: Job,
   jobIndex: number,
   stepIndex: number,
   totalSteps: number,
   isActive: () => boolean,
   deps: StepLogStreamDependencies
 ): Promise<void> {
+  logInfo(`Starting live step log stream for ${runRef.repo.owner}/${runRef.repo.name} job ${job.id} step ${stepIndex}`);
   stopLogStream(uri);
   const controller = { stopped: false };
   liveLogStreams.set(uri.toString(), controller);
 
-  // Internal (web UI) API only accepts run_number in the URL
-  if (runRef.runNumber == null) {
-    deps.logContentProvider.update(uri, 'Step logs unavailable: run_number not available');
-    stopLogStream(uri);
-    return;
-  }
-  const runNumber = runRef.runNumber;
   let lastContent = '';
   while (!controller.stopped && isActive()) {
+    let officialFallback: ExtractedStepLog | undefined;
     try {
-      const stepLog = await internalApi.getStepLogs(runRef.repo, runNumber, jobIndex, stepIndex, totalSteps);
-      if (stepLog) {
-        const content = GiteaInternalApi.formatStepLogs(stepLog);
-        if (content !== lastContent) {
-          lastContent = content;
-          deps.logContentProvider.update(uri, content);
+      const official = await getOfficialStepLog(api, runRef, job, stepIndex);
+      if (official?.exact) {
+        if (official.content !== lastContent) {
+          lastContent = official.content;
+          deps.logContentProvider.update(uri, official.content);
         }
+      } else {
+        officialFallback = official;
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      deps.logContentProvider.update(uri, `Failed to load step logs: ${message}`);
+    } catch {
+      // Fall back to the internal web UI API below.
+    }
+
+    if (!lastContent || officialFallback) {
+      const internal = await getInternalStepLog(internalApi, runRef, job, jobIndex, stepIndex, totalSteps);
+      const content = internal.content ?? officialFallback?.content ?? `Failed to load step logs: ${internal.error ?? 'unknown error'}`;
+      if (content !== lastContent) {
+        lastContent = content;
+        deps.logContentProvider.update(uri, content);
+      }
     }
 
     const settings = deps.getSettings();
@@ -281,15 +377,7 @@ export async function startStepLogStream(
 
   // Final fetch after loop ends
   if (!controller.stopped) {
-    try {
-      const stepLog = await internalApi.getStepLogs(runRef.repo, runNumber, jobIndex, stepIndex, totalSteps);
-      if (stepLog) {
-        const content = GiteaInternalApi.formatStepLogs(stepLog);
-        deps.logContentProvider.update(uri, content);
-      }
-    } catch {
-      // Ignore final fetch errors
-    }
+    await fetchStepLogs(api, internalApi, uri, runRef, job, jobIndex, stepIndex, totalSteps, deps);
   }
 
   stopLogStream(uri);

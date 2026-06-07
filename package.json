@@ -3,7 +3,7 @@
   "displayName": "Gitea Actions",
   "description": "View and inspect Gitea Actions workflow runs directly from VS Code / Cursor. Monitor CI/CD pipelines, check job status, view logs, and manage secrets and variables for your Gitea Actions workflows.",
   "icon": "resources/gitea-actions-icon.png",
-  "version": "2.5.4",
+  "version": "2.6.0",
   "publisher": "tarkil",
   "license": "MIT",
   "repository": {
@@ -42,6 +42,7 @@
     "test:coverage": "vitest run --coverage",
     "package": "npm run compile && npx @vscode/vsce package",
     "release": "node scripts/release.js",
+    "release:current": "node scripts/release.js current",
     "release:patch": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
     "release:major": "node scripts/release.js major"
@@ -118,6 +119,12 @@
           "order": 9,
           "default": false,
           "description": "Skip TLS certificate verification (not recommended)."
+        },
+        "giteaActions.logging.verbose": {
+          "type": "boolean",
+          "order": 10,
+          "default": false,
+          "description": "Write verbose diagnostic logs, including API requests, to the Gitea Actions output channel."
         }
       }
     },

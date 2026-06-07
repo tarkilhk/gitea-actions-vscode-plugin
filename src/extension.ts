@@ -68,6 +68,7 @@ import {
   scheduleJobRefresh,
   fetchJobsForRun
 } from './services/refreshService';
+import { logInfo, setVerboseLogging } from './util/logging';
 
 // Module-level state
 let settings: ExtensionSettings;
@@ -114,6 +115,8 @@ function getRefreshState(): RefreshServiceState {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   settings = getSettings();
+  setVerboseLogging(settings.verboseLogging);
+  logInfo(`Gitea Actions activated (baseUrl=${settings.baseUrl || 'not set'}, discovery=${settings.discoveryMode}, verboseLogging=${settings.verboseLogging})`);
   secretStorage = context.secrets;
   cachedToken = await getToken(secretStorage);
 
@@ -226,6 +229,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration('giteaActions')) {
         settings = getSettings();
+        setVerboseLogging(settings.verboseLogging);
+        logInfo(`Gitea Actions configuration changed (baseUrl=${settings.baseUrl || 'not set'}, discovery=${settings.discoveryMode}, verboseLogging=${settings.verboseLogging})`);
         resetRefreshCaches(getRefreshState());
         scheduleRefresh();
       }
@@ -351,10 +356,10 @@ function createLogStreamContext() {
         hydrateJobSteps: (ref, jobs) => hydrateJobSteps(ref, jobs, state),
         scheduleJobRefresh: (ref, jobs) => scheduleJobRefresh(ref, jobs, state, settings)
       }),
-    fetchStepLogs: (internalApi: import('./gitea/internalApi').GiteaInternalApi, uri: vscode.Uri, runRef: RunRef, jobIndex: number, stepIndex: number, totalSteps: number) =>
-      fetchStepLogs(internalApi, uri, runRef, jobIndex, stepIndex, totalSteps, stepLogDeps),
-    startStepLogStream: (internalApi: import('./gitea/internalApi').GiteaInternalApi, uri: vscode.Uri, runRef: RunRef, jobIndex: number, stepIndex: number, totalSteps: number, isActive: () => boolean) =>
-      startStepLogStream(internalApi, uri, runRef, jobIndex, stepIndex, totalSteps, isActive, stepLogDeps),
+    fetchStepLogs: (api: import('./gitea/api').GiteaApi, internalApi: import('./gitea/internalApi').GiteaInternalApi | undefined, uri: vscode.Uri, runRef: RunRef, job: import('./gitea/models').Job, jobIndex: number, stepIndex: number, totalSteps: number) =>
+      fetchStepLogs(api, internalApi, uri, runRef, job, jobIndex, stepIndex, totalSteps, stepLogDeps),
+    startStepLogStream: (api: import('./gitea/api').GiteaApi, internalApi: import('./gitea/internalApi').GiteaInternalApi | undefined, uri: vscode.Uri, runRef: RunRef, job: import('./gitea/models').Job, jobIndex: number, stepIndex: number, totalSteps: number, isActive: () => boolean) =>
+      startStepLogStream(api, internalApi, uri, runRef, job, jobIndex, stepIndex, totalSteps, isActive, stepLogDeps),
     buildLogUri,
     buildStepLogUri,
     isJobActive,

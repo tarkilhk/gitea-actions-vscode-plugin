@@ -1,15 +1,14 @@
 /**
- * Internal (undocumented) Gitea API for steps and logs.
+ * Internal (undocumented) Gitea API for legacy step details and logs.
  *
  * BACKGROUND:
- * Gitea's official API has a `steps` field on jobs but has never implemented
- * populating it (always returns null). This module provides a workaround by
- * calling the same internal endpoints the Gitea web UI uses.
+ * Older Gitea versions exposed a `steps` field on jobs but often returned null.
+ * This module provides a workaround by calling the same internal endpoints the
+ * Gitea web UI uses.
  *
  * CURRENT STATUS (as of Gitea ≈1.24+):
- * The internal run page (and thus this API) is only accessible with a PAT for
- * **public** repos. For **private** repos Gitea returns 404 for the run page,
- * so we cannot get CSRF or call the jobs endpoint. Steps then show as unavailable.
+ * The internal run page can be inaccessible with PAT auth for private repos,
+ * even when official API calls work. Prefer official API data first.
  *
  * We still call this for public repos and older Gitea instances. When steps
  * fail to load, refreshService.ts sets job.stepsError for the UI.

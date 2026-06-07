@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { GiteaApi } from '../gitea/api';
 import { GiteaInternalApi } from '../gitea/internalApi';
-import { RepoRef, RunRef, Step } from '../gitea/models';
+import { Job, RepoRef, RunRef, Step } from '../gitea/models';
 import { ActionsNode, StepNode, JobNode } from '../views/nodes';
 
 export type LogStreamContext = {
@@ -18,17 +18,21 @@ export type LogStreamContext = {
     jobId: number | string
   ) => Promise<void>;
   fetchStepLogs: (
-    internalApi: GiteaInternalApi,
+    api: GiteaApi,
+    internalApi: GiteaInternalApi | undefined,
     uri: vscode.Uri,
     runRef: RunRef,
+    job: Job,
     jobIndex: number,
     stepIndex: number,
     totalSteps: number
   ) => Promise<void>;
   startStepLogStream: (
-    internalApi: GiteaInternalApi,
+    api: GiteaApi,
+    internalApi: GiteaInternalApi | undefined,
     uri: vscode.Uri,
     runRef: RunRef,
+    job: Job,
     jobIndex: number,
     stepIndex: number,
     totalSteps: number,
@@ -53,7 +57,7 @@ export type LogStreamContext = {
 
 /**
  * Views logs for a job or step.
- * For steps, uses the internal API to fetch step-specific logs.
+ * For steps, tries official job logs first and falls back to the internal API.
  */
 export async function viewJobLogs(
   node: ActionsNode,
@@ -111,7 +115,7 @@ async function viewJobLogsInternal(
 }
 
 /**
- * Views logs for a specific step using the internal API.
+ * Views logs for a specific step.
  */
 async function viewStepLogs(
   node: StepNode,
@@ -123,11 +127,12 @@ async function viewStepLogs(
     return;
   }
 
-  const internalApi = await ctx.ensureInternalApi();
-  if (!internalApi) {
+  const api = await ctx.ensureApi();
+  if (!api) {
     vscode.window.showErrorMessage('Failed to initialize API client.');
     return;
   }
+  const internalApi = await ctx.ensureInternalApi();
 
   const { runRef, job, step, jobIndex, stepIndex } = node;
   const { repo, id: runId } = runRef;
@@ -146,9 +151,11 @@ async function viewStepLogs(
   if (shouldStream) {
     // Stream logs while step is active
     ctx.startStepLogStream(
+      api,
       internalApi,
       uri,
       runRef,
+      job,
       jobIndex,
       stepIndex,
       totalSteps,
@@ -158,7 +165,7 @@ async function viewStepLogs(
     );
   } else {
     // Fetch logs once for completed step
-    await ctx.fetchStepLogs(internalApi, uri, runRef, jobIndex, stepIndex, totalSteps);
+    await ctx.fetchStepLogs(api, internalApi, uri, runRef, job, jobIndex, stepIndex, totalSteps);
   }
 }
 

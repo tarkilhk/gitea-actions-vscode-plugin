@@ -12,6 +12,7 @@ export interface ExtensionSettings {
   logPollIntervalSeconds: number;
   maxRunsPerRepo: number;
   maxJobsPerRun: number;
+  verboseLogging: boolean;
 }
 
 export function getSettings(): ExtensionSettings {
@@ -25,7 +26,8 @@ export function getSettings(): ExtensionSettings {
     jobsIntervalSeconds: cfg.get<number>('refresh.jobsIntervalSeconds', 5),
     logPollIntervalSeconds: cfg.get<number>('logs.pollIntervalSeconds', 5),
     maxRunsPerRepo: cfg.get<number>('maxRunsPerRepo', 20),
-    maxJobsPerRun: cfg.get<number>('maxJobsPerRun', 50)
+    maxJobsPerRun: cfg.get<number>('maxJobsPerRun', 50),
+    verboseLogging: cfg.get<boolean>('logging.verbose', false)
   };
 }
 

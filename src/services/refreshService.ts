@@ -9,7 +9,7 @@ import { discoverWorkspaceRepos } from '../gitea/discovery';
 import { ActionsTreeProvider } from '../views/actionsTreeProvider';
 import { SettingsTreeProvider } from '../views/settingsTreeProvider';
 import { RunNode } from '../views/nodes';
-import { logDebug, logWarn } from '../util/logging';
+import { logDebug, logInfo, logWarn } from '../util/logging';
 import { JOBS_TIMEOUT_MS, MAX_CONCURRENT_REPOS, MAX_CONCURRENT_JOBS } from '../config/constants';
 import { isRunning, updateStatusBar } from './statusBarService';
 import { isJobActive } from './logStreamService';
@@ -180,6 +180,7 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
 
   const settings = getSettings();
   const repos = await resolveRepos(api, state, settings);
+  logInfo(`Refreshing Gitea Actions data (repos=${repos.length}, discovery=${settings.discoveryMode}, maxRuns=${settings.maxRunsPerRepo})`);
   
   // Only call setRepositories when the repo list actually changes
   const newRepoKeys = new Set(repos.map(r => repoKey(r)));
@@ -225,7 +226,7 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
       state.workspaceProvider.updateRuns(repo, limitedRuns);
       state.workflowsProvider.updateRuns(repo, limitedRuns);
       state.lastRunsByRepo.set(key, limitedRuns);
-      logDebug(`Runs fetched for ${repo.owner}/${repo.name}: ${limitedRuns.length} in ${Date.now() - runStart}ms`);
+      logInfo(`Runs fetched for ${repo.owner}/${repo.name}: ${limitedRuns.length} in ${Date.now() - runStart}ms`);
       if (limitedRuns.some((r) => isRunning(r.status))) {
         anyRunning = true;
       }
@@ -264,7 +265,7 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
     });
   }
 
-  logDebug(`Refresh cycle completed in ${Date.now() - refreshStarted}ms`);
+  logInfo(`Refresh cycle completed in ${Date.now() - refreshStarted}ms (active=${anyRunning})`);
   updateStatusBar(undefined, state.lastRunsByRepo);
   return anyRunning;
 }
@@ -415,9 +416,9 @@ export async function fetchJobsForRun(
 /**
  * Tries to fill job steps from the official Gitea API.
  *
- * GET /api/v1/repos/{owner}/{repo}/actions/jobs/{job_id} has a `steps` field in the
- * schema, but Gitea has never implemented populating it (always returns null).
- * We still try in case a future Gitea version starts returning steps here.
+ * Newer Gitea versions populate `steps` on
+ * GET /api/v1/repos/{owner}/{repo}/actions/jobs/{job_id}. Older versions often
+ * returned null, so the internal web UI fallback below remains useful.
  */
 async function hydrateJobStepsFromOfficialApi(
   api: GiteaApi,
@@ -442,9 +443,9 @@ async function hydrateJobStepsFromOfficialApi(
 /**
  * Hydrates job steps using the internal Gitea web UI API.
  *
- * Gitea's official API never populates the `steps` field, so we fall back to the
- * same internal endpoint the Gitea web UI uses. Gitea only allows PAT access to
- * that endpoint for public repos; for private repos the run page returns 404.
+ * Used as a fallback when the official API does not return step data. Gitea
+ * only allows PAT access to this endpoint for some instances/repos; private
+ * repos can return 404 even when official API calls work.
  *
  * On 404/401 we set `job.stepsError` so the UI can show a clear message (private vs public).
  *
@@ -518,7 +519,9 @@ export async function hydrateJobSteps(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const isAccessDenied = message.includes('404') || message.includes('401') || message.includes('403');
-      job.stepsError = 'Steps unavailable: Gitea does not expose step details for private repos (gitea only supports public repos when using a PAT).';
+      if (!job.steps?.length) {
+        job.stepsError = 'Steps unavailable: this Gitea server did not return official step details, and the internal web UI endpoint is not accessible with the configured token.';
+      }
       if (isAccessDenied) {
         logWarn(`Steps unavailable for job ${jobIndex} (${job.name}) in ${repo.owner}/${repo.name} (Gitea does not expose step details for private repos)`);
       } else {
