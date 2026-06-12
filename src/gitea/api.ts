@@ -1,6 +1,7 @@
 import { GiteaClient } from './client';
 import { Job, RepoRef, WorkflowRun, Step } from './models';
 import { normalizeConclusion, normalizeStatus } from '../util/status';
+import { normalizeTimestamp } from '../util/time';
 
 const CONTENT_TYPE_HEADER = 'content-type';
 
@@ -70,10 +71,10 @@ export function mapRun(repo: RepoRef, raw: unknown): WorkflowRun {
     sha: (r.head_sha ?? r.sha ?? r.commit) as string | undefined,
     status,
     conclusion,
-    createdAt: (r.created_at ?? r.created ?? r.createdAt) as string | undefined,
-    updatedAt: (r.updated_at ?? r.updated ?? r.updatedAt) as string | undefined,
-    startedAt: (r.started_at ?? r.startedAt) as string | undefined,
-    completedAt: (r.completed_at ?? r.completedAt) as string | undefined,
+    createdAt: normalizeTimestamp(r.created_at ?? r.created ?? r.createdAt),
+    updatedAt: normalizeTimestamp(r.updated_at ?? r.updated ?? r.updatedAt),
+    startedAt: normalizeTimestamp(r.started_at ?? r.startedAt ?? r.run_started_at),
+    completedAt: normalizeTimestamp(r.completed_at ?? r.completedAt),
     htmlUrl: (r.html_url ?? r.url ?? r.web_url) as string | undefined
   };
 }
@@ -88,8 +89,8 @@ export function mapStep(raw: unknown): Step {
     name: (r.name ?? r.title ?? 'Step') as string,
     status,
     conclusion,
-    startedAt: (r.started_at ?? r.start_time ?? r.startedAt) as string | undefined,
-    completedAt: (r.completed_at ?? r.completedAt ?? r.completed) as string | undefined,
+    startedAt: normalizeTimestamp(r.started_at ?? r.start_time ?? r.startedAt),
+    completedAt: normalizeTimestamp(r.completed_at ?? r.completedAt ?? r.completed),
     number: (r.number ?? r.step_number) as number | undefined
   };
 }
@@ -104,8 +105,8 @@ export function mapJob(raw: unknown): Job {
     name: (r.name ?? r.title ?? 'Job') as string,
     status,
     conclusion,
-    startedAt: (r.started_at ?? r.start_time ?? r.startedAt) as string | undefined,
-    completedAt: (r.completed_at ?? r.completed ?? r.completedAt) as string | undefined,
+    startedAt: normalizeTimestamp(r.started_at ?? r.start_time ?? r.startedAt),
+    completedAt: normalizeTimestamp(r.completed_at ?? r.completed ?? r.completedAt),
     htmlUrl: (r.html_url ?? r.url ?? r.web_url) as string | undefined,
     steps: Array.isArray(r.steps) ? (r.steps as unknown[]).map((step) => mapStep(step)) : undefined
   };

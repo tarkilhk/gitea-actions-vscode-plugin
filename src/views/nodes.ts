@@ -11,7 +11,7 @@ import {
   variableIcon,
   settingsIcon
 } from './icons';
-import { formatAgo, formatDateTime, formatDuration } from '../util/time';
+import { formatAgo, formatDateTime, formatDuration, pickTimestamp } from '../util/time';
 import { isWorkflowPinned } from '../services/statusBarService';
 import { workflowIdFromPath } from '../util/workflow';
 
@@ -134,11 +134,14 @@ function buildRunLabel(run: WorkflowRun): string {
 }
 
 function buildRunTooltip(run: WorkflowRun): string {
-  const duration = formatDuration(run.startedAt ?? run.createdAt, run.completedAt ?? run.updatedAt);
+  const startedAt = pickTimestamp(run.startedAt, run.createdAt);
+  const endedAt = pickTimestamp(run.completedAt, run.updatedAt);
+  const duration = formatDuration(startedAt, endedAt);
   const status = run.conclusion ?? run.status;
   const statusLabel = status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Status';
-  const when = formatAgo(run.completedAt ?? run.updatedAt ?? run.createdAt);
-  const absolute = formatDateTime(run.completedAt ?? run.updatedAt ?? run.createdAt);
+  const triggeredAt = pickTimestamp(run.startedAt, run.createdAt, run.updatedAt);
+  const when = formatAgo(triggeredAt);
+  const absolute = formatDateTime(triggeredAt);
   const actor = run.actor ?? 'unknown';
   const event = run.event ?? 'workflow';
   const commitMsg = run.commitMessage ?? '';
@@ -165,7 +168,10 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
     case 'run': {
       const { run, repo } = node;
       const label = buildRunLabel(run);
-      const duration = formatDuration(run.startedAt ?? run.createdAt, run.completedAt ?? run.updatedAt);
+      const duration = formatDuration(
+        pickTimestamp(run.startedAt, run.createdAt),
+        pickTimestamp(run.completedAt, run.updatedAt)
+      );
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
       item.id = `run-${repo.owner}-${repo.name}-${run.id}`;
       item.iconPath = iconForRun(run);

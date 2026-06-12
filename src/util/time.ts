@@ -1,9 +1,60 @@
+/** Reject Gitea zero/unset timestamps (epoch, Go zero time, numeric 0). */
+const MIN_VALID_MS = Date.UTC(2000, 0, 1);
+
+export function normalizeTimestamp(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+
+  let ms: number;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value === 0) {
+      return undefined;
+    }
+    // Gitea TimeStamp fields are Unix seconds; JS Date expects milliseconds.
+    ms = value < 1e12 ? value * 1000 : value;
+  } else if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === '0') {
+      return undefined;
+    }
+    if (/^\d+$/.test(trimmed)) {
+      const num = Number(trimmed);
+      if (!Number.isFinite(num) || num === 0) {
+        return undefined;
+      }
+      ms = num < 1e12 ? num * 1000 : num;
+    } else {
+      ms = new Date(trimmed).getTime();
+    }
+  } else {
+    return undefined;
+  }
+
+  if (!Number.isFinite(ms) || ms < MIN_VALID_MS) {
+    return undefined;
+  }
+  return new Date(ms).toISOString();
+}
+
+export function pickTimestamp(...candidates: unknown[]): string | undefined {
+  for (const candidate of candidates) {
+    const normalized = normalizeTimestamp(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return undefined;
+}
+
 export function formatDuration(start?: string, end?: string): string {
-  if (!start) {
+  const normalizedStart = normalizeTimestamp(start);
+  if (!normalizedStart) {
     return '';
   }
-  const startDate = new Date(start);
-  const endDate = end ? new Date(end) : new Date();
+  const startDate = new Date(normalizedStart);
+  const normalizedEnd = normalizeTimestamp(end);
+  const endDate = normalizedEnd ? new Date(normalizedEnd) : new Date();
   const ms = endDate.getTime() - startDate.getTime();
   if (!Number.isFinite(ms) || ms < 0) {
     return '';
@@ -23,10 +74,11 @@ export function formatDuration(start?: string, end?: string): string {
 }
 
 export function formatAgo(date?: string): string {
-  if (!date) {
+  const normalized = normalizeTimestamp(date);
+  if (!normalized) {
     return '';
   }
-  const target = new Date(date);
+  const target = new Date(normalized);
   const delta = Date.now() - target.getTime();
   if (!Number.isFinite(delta)) {
     return '';
@@ -48,10 +100,11 @@ export function formatAgo(date?: string): string {
 }
 
 export function formatDateTime(date?: string): string {
-  if (!date) {
+  const normalized = normalizeTimestamp(date);
+  if (!normalized) {
     return '';
   }
-  const value = new Date(date);
+  const value = new Date(normalized);
   if (Number.isNaN(value.getTime())) {
     return '';
   }

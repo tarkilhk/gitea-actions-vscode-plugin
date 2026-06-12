@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.1] - 2026-06-12
+
+### 🐛 Fixed
+
+- Workflow run tooltips and durations no longer show **1/1/1970** for in-progress runs when Gitea returns zero `completed_at` timestamps; trigger time now falls back to `started_at` (and `run_started_at`) with epoch/unset values filtered out.
+
 ## [2.6.0] - 2026-06-07
 
 ### ✨ Added

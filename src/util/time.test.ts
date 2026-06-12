@@ -1,5 +1,30 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { formatDuration, formatAgo, formatDateTime } from './time';
+import { formatDuration, formatAgo, formatDateTime, normalizeTimestamp, pickTimestamp } from './time';
+
+describe('normalizeTimestamp', () => {
+  it('returns undefined for epoch and Go zero time', () => {
+    expect(normalizeTimestamp(0)).toBeUndefined();
+    expect(normalizeTimestamp('0')).toBeUndefined();
+    expect(normalizeTimestamp('1970-01-01T00:00:00Z')).toBeUndefined();
+    expect(normalizeTimestamp('0001-01-01T00:00:00Z')).toBeUndefined();
+  });
+
+  it('converts Unix seconds to ISO strings', () => {
+    expect(normalizeTimestamp(1704067200)).toBe('2024-01-01T00:00:00.000Z');
+  });
+
+  it('keeps valid ISO strings', () => {
+    expect(normalizeTimestamp('2024-01-01T00:00:00Z')).toBe('2024-01-01T00:00:00.000Z');
+  });
+});
+
+describe('pickTimestamp', () => {
+  it('skips invalid values and returns the first valid timestamp', () => {
+    expect(pickTimestamp('1970-01-01T00:00:00Z', '2024-01-01T00:00:00Z')).toBe(
+      '2024-01-01T00:00:00.000Z'
+    );
+  });
+});
 
 describe('formatDuration', () => {
   it('returns empty string when start is undefined', () => {
@@ -40,6 +65,16 @@ describe('formatDuration', () => {
   it('returns empty string for invalid dates', () => {
     expect(formatDuration('invalid', '2024-01-01T12:00:00Z')).toBe('');
   });
+
+  it('ignores epoch end timestamps for in-progress runs', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2024-01-01T12:01:00Z'));
+    try {
+      expect(formatDuration('2024-01-01T12:00:00Z', '1970-01-01T00:00:00Z')).toBe('1m 0s');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('formatAgo', () => {
@@ -78,6 +113,10 @@ describe('formatAgo', () => {
 
   it('returns empty string for invalid dates', () => {
     expect(formatAgo('invalid')).toBe('');
+  });
+
+  it('returns empty string for epoch timestamps', () => {
+    expect(formatAgo('1970-01-01T00:00:00Z')).toBe('');
   });
 });
 

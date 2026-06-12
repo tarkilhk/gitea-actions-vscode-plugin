@@ -71,7 +71,7 @@ describe('mapRun', () => {
     expect(result.runNumber).toBe(42);
     expect(result.branch).toBe('main');
     expect(result.sha).toBe('abc123');
-    expect(result.createdAt).toBe('2024-01-01T00:00:00Z');
+    expect(result.createdAt).toBe('2024-01-01T00:00:00.000Z');
     expect(result.htmlUrl).toBe('https://example.com/run/1');
   });
 
@@ -86,7 +86,7 @@ describe('mapRun', () => {
     const result = mapRun(mockRepo, raw);
     
     expect(result.runNumber).toBe(42);
-    expect(result.createdAt).toBe('2024-01-01T00:00:00Z');
+    expect(result.createdAt).toBe('2024-01-01T00:00:00.000Z');
   });
 
   it('extracts workflow name from various sources', () => {
@@ -139,6 +139,41 @@ describe('mapRun', () => {
     expect(result.id).toBeDefined();
     expect(typeof result.id).toBe('string');
   });
+
+  it('drops zero completed_at timestamps from in-progress runs', () => {
+    const raw: Record<string, unknown> = {
+      id: 1,
+      status: 'running',
+      started_at: '2024-06-01T12:00:00Z',
+      completed_at: '1970-01-01T00:00:00Z'
+    };
+    const result = mapRun(mockRepo, raw);
+
+    expect(result.startedAt).toBe('2024-06-01T12:00:00.000Z');
+    expect(result.completedAt).toBeUndefined();
+  });
+
+  it('maps run_started_at when started_at is missing', () => {
+    const raw: Record<string, unknown> = {
+      id: 1,
+      status: 'running',
+      run_started_at: '2024-06-01T12:00:00Z'
+    };
+    const result = mapRun(mockRepo, raw);
+
+    expect(result.startedAt).toBe('2024-06-01T12:00:00.000Z');
+  });
+
+  it('normalizes Unix second timestamps', () => {
+    const raw: Record<string, unknown> = {
+      id: 1,
+      status: 'completed',
+      created_at: 1704067200
+    };
+    const result = mapRun(mockRepo, raw);
+
+    expect(result.createdAt).toBe('2024-01-01T00:00:00.000Z');
+  });
 });
 
 describe('mapJob', () => {
@@ -163,8 +198,8 @@ describe('mapJob', () => {
     raw['completed_at'] = '2024-01-01T00:05:00Z';
     const result = mapJob(raw);
     
-    expect(result.startedAt).toBe('2024-01-01T00:00:00Z');
-    expect(result.completedAt).toBe('2024-01-01T00:05:00Z');
+    expect(result.startedAt).toBe('2024-01-01T00:00:00.000Z');
+    expect(result.completedAt).toBe('2024-01-01T00:05:00.000Z');
   });
 
   it('maps steps when present', () => {
@@ -226,7 +261,7 @@ describe('mapStep', () => {
     const raw: Record<string, unknown> = { id: 1, name: 'Step' };
     raw['start_time'] = '2024-01-01T00:00:00Z';
     const result = mapStep(raw);
-    expect(result.startedAt).toBe('2024-01-01T00:00:00Z');
+    expect(result.startedAt).toBe('2024-01-01T00:00:00.000Z');
   });
 
   it('provides fallback name when missing', () => {
