@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { formatDuration, formatAgo, formatDateTime, normalizeTimestamp, pickTimestamp } from './time';
+import { formatDuration, formatAgo, formatDateTime, normalizeTimestamp, pickTimestamp, formatRunDuration } from './time';
 
 describe('normalizeTimestamp', () => {
   it('returns undefined for epoch and Go zero time', () => {
@@ -74,6 +74,38 @@ describe('formatDuration', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('formatRunDuration', () => {
+  it('uses created_at when started_at is epoch for cancelled runs', () => {
+    expect(
+      formatRunDuration({
+        startedAt: '1970-01-01T00:00:00Z',
+        createdAt: '2026-06-13T01:40:47Z',
+        completedAt: '2026-06-13T01:41:47Z'
+      })
+    ).toBe('1m 0s');
+  });
+
+  it('uses updated_at when started_at and created_at are epoch', () => {
+    expect(
+      formatRunDuration({
+        startedAt: '1970-01-01T00:00:00Z',
+        updatedAt: '2026-06-13T01:41:47Z',
+        completedAt: '2026-06-13T01:41:47Z'
+      })
+    ).toBe('0s');
+  });
+
+  it('does not show multi-decade durations for epoch started_at', () => {
+    const duration = formatRunDuration({
+      startedAt: '1970-01-01T00:00:00Z',
+      completedAt: '2026-06-13T01:41:47Z',
+      updatedAt: '2026-06-13T01:41:47Z'
+    });
+    expect(duration).not.toMatch(/\d{5,}h/);
+    expect(duration).toBe('0s');
   });
 });
 

@@ -47,6 +47,38 @@ export function pickTimestamp(...candidates: unknown[]): string | undefined {
   return undefined;
 }
 
+/** Best available start/end timestamps for a workflow run duration. */
+export function runDurationTimestamps(run: {
+  startedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  completedAt?: string;
+}): { start?: string; end?: string } {
+  return {
+    // Skip zero started_at; fall back to created/updated when a run was cancelled before starting.
+    start: pickTimestamp(run.startedAt, run.createdAt, run.updatedAt),
+    end: pickTimestamp(run.completedAt, run.updatedAt)
+  };
+}
+
+export function formatRunDuration(run: {
+  startedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  completedAt?: string;
+}): string {
+  const { start, end } = runDurationTimestamps(run);
+  return formatDuration(start, end);
+}
+
+export function pickRunTriggerTime(run: {
+  startedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}): string | undefined {
+  return pickTimestamp(run.startedAt, run.createdAt, run.updatedAt);
+}
+
 export function formatDuration(start?: string, end?: string): string {
   const normalizedStart = normalizeTimestamp(start);
   if (!normalizedStart) {

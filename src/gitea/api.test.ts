@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { GiteaApi, pickArray, mapRun, mapJob, mapStep } from './api';
+import { GiteaClient } from './client';
 import { RepoRef } from './models';
 
 const mockRepo: RepoRef = {
@@ -153,6 +154,21 @@ describe('mapRun', () => {
     expect(result.completedAt).toBeUndefined();
   });
 
+  it('falls back to run_started_at when started_at is epoch', () => {
+    const raw: Record<string, unknown> = {
+      id: 1,
+      status: 'completed',
+      conclusion: 'cancelled',
+      started_at: '1970-01-01T00:00:00Z',
+      run_started_at: '2024-06-01T12:00:00Z',
+      completed_at: '2024-06-01T12:01:00Z'
+    };
+    const result = mapRun(mockRepo, raw);
+
+    expect(result.startedAt).toBe('2024-06-01T12:00:00.000Z');
+    expect(result.completedAt).toBe('2024-06-01T12:01:00.000Z');
+  });
+
   it('maps run_started_at when started_at is missing', () => {
     const raw: Record<string, unknown> = {
       id: 1,
@@ -295,7 +311,7 @@ describe('listAccessibleRepos', () => {
           data: [{ owner: { login: 'alice' }, name: 'repo-one' }]
         };
       }
-    } as { getJson: (path: string) => Promise<unknown> };
+    } as unknown as GiteaClient;
 
     const api = new GiteaApi(client);
     const repos = await api.listAccessibleRepos(2);
@@ -318,7 +334,7 @@ describe('listAccessibleRepos', () => {
         }
         return [{ owner: { login: 'bob' }, name: 'owned-repo' }];
       }
-    } as { getJson: (path: string) => Promise<unknown> };
+    } as unknown as GiteaClient;
 
     const api = new GiteaApi(client);
     const repos = await api.listAccessibleRepos(50);
@@ -335,7 +351,7 @@ describe('listAccessibleRepos', () => {
         paths.push(path);
         throw new Error('Request failed (401): unauthorized');
       }
-    } as { getJson: (path: string) => Promise<unknown> };
+    } as unknown as GiteaClient;
 
     const api = new GiteaApi(client);
     await expect(api.listAccessibleRepos(50)).rejects.toThrow('401');
