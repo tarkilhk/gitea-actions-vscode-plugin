@@ -172,6 +172,37 @@ export class GiteaApi {
     return runs.map((run) => mapRun(repo, run));
   }
 
+  async getDefaultBranch(repo: RepoRef): Promise<string> {
+    const path = `/api/v1/repos/${repo.owner}/${repo.name}`;
+    const payload = await this.client.getJson<{ default_branch?: string }>(path);
+    const branch = payload.default_branch;
+    if (!branch) {
+      throw new Error('Repository default branch is not available.');
+    }
+    return branch;
+  }
+
+  async dispatchWorkflow(
+    repo: RepoRef,
+    workflowId: string,
+    options: { ref: string; inputs?: Record<string, string> }
+  ): Promise<void> {
+    const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/workflows/${encodeURIComponent(workflowId)}/dispatches`;
+    const body: { ref: string; inputs?: Record<string, string> } = { ref: options.ref };
+    if (options.inputs && Object.keys(options.inputs).length > 0) {
+      body.inputs = options.inputs;
+    }
+    const res = await this.client.request(path, {
+      method: 'POST',
+      headers: { [CONTENT_TYPE_HEADER]: 'application/json' },
+      body: JSON.stringify(body)
+    } as RequestInit);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Request failed (${res.status}): ${text || res.statusText}`);
+    }
+  }
+
   async listWorkflows(
     repo: RepoRef
   ): Promise<{ id: string; name: string; path?: string; htmlUrl?: string; url?: string }[]> {

@@ -22,6 +22,7 @@ export type CommandHandlers = {
   pinWorkflowToStatusBar: (node: ActionsNode) => Promise<void>;
   unpinWorkflowFromStatusBar: (node: ActionsNode) => Promise<void>;
   clearPinnedWorkflows: () => Promise<void>;
+  dispatchWorkflow: (node: ActionsNode) => Promise<void>;
 };
 
 export function registerCommands(context: vscode.ExtensionContext, handlers: CommandHandlers): void {
@@ -57,6 +58,13 @@ export function registerCommands(context: vscode.ExtensionContext, handlers: Com
     vscode.commands.registerCommand('giteaActions.openSettings', () => handlers.openSettings()),
     vscode.commands.registerCommand('giteaActions.pinWorkflowToStatusBar', (node: ActionsNode) => handlers.pinWorkflowToStatusBar(node)),
     vscode.commands.registerCommand('giteaActions.unpinWorkflowFromStatusBar', (node: ActionsNode) => handlers.unpinWorkflowFromStatusBar(node)),
-    vscode.commands.registerCommand('giteaActions.clearPinnedWorkflows', () => handlers.clearPinnedWorkflows())
+    vscode.commands.registerCommand('giteaActions.clearPinnedWorkflows', () => handlers.clearPinnedWorkflows()),
+    vscode.commands.registerCommand('giteaActions.dispatchWorkflow', (node: ActionsNode) => {
+      if (!node || node.type !== 'workflowGroup') {
+        vscode.window.showErrorMessage('This command can only be used on workflows.');
+        return;
+      }
+      return handlers.dispatchWorkflow(node);
+    })
   );
 }

@@ -32,6 +32,7 @@ import {
   viewJobLogs,
   openInBrowser
 } from './commands/runCommands';
+import { dispatchWorkflow } from './commands/workflowCommands';
 import { diagnoseSteps } from './commands/diagnosticCommands';
 
 // Services
@@ -221,7 +222,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       workflowsProvider.refresh();
       updateStatusBar(undefined, lastRunsByRepo);
       showToast('Pinned workflows cleared.', 'info');
-    }
+    },
+    dispatchWorkflow: (node) => dispatchWorkflow(node, createTokenContext())
   });
 
   // Configuration change listener

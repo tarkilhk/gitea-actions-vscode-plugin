@@ -3,7 +3,7 @@
   "displayName": "Gitea Actions",
   "description": "View and inspect Gitea Actions workflow runs directly from VS Code / Cursor. Monitor CI/CD pipelines, check job status, view logs, and manage secrets and variables for your Gitea Actions workflows.",
   "icon": "resources/gitea-actions-icon.png",
-  "version": "2.6.2",
+  "version": "2.6.3",
   "publisher": "tarkil",
   "license": "MIT",
   "repository": {
@@ -251,6 +251,11 @@
       {
         "command": "giteaActions.clearPinnedWorkflows",
         "title": "Gitea Actions: Clear Pinned Workflows"
+      },
+      {
+        "command": "giteaActions.dispatchWorkflow",
+        "title": "Gitea Actions: Dispatch Workflow",
+        "icon": "$(play)"
       }
     ],
     "menus": {
@@ -331,6 +336,11 @@
           "command": "giteaActions.unpinWorkflowFromStatusBar",
           "when": "view == giteaActions.workflows && viewItem == giteaWorkflowGroupPinned",
           "group": "giteaActions_pin"
+        },
+        {
+          "command": "giteaActions.dispatchWorkflow",
+          "when": "view == giteaActions.workflows && (viewItem == giteaWorkflowGroup || viewItem == giteaWorkflowGroupPinned)",
+          "group": "inline"
         }
       ]
     }

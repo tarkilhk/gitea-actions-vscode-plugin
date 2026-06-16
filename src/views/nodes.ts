@@ -161,6 +161,14 @@ export function toTreeItem(node: ActionsNode): vscode.TreeItem {
       item.contextValue = workflowId && isWorkflowPinned(node.repo, workflowId) ? 'giteaWorkflowGroupPinned' : 'giteaWorkflowGroup';
       item.iconPath = repoIcon;
       item.description = `${node.runs.length} run${node.runs.length === 1 ? '' : 's'}`;
+      item.buttons = [
+        {
+          iconPath: new vscode.ThemeIcon('play'),
+          tooltip: 'Dispatch workflow on latest code commit',
+          command: 'giteaActions.dispatchWorkflow',
+          arguments: [node]
+        }
+      ];
       return item;
     }
     case 'run': {
