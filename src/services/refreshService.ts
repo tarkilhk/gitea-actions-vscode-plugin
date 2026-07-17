@@ -13,10 +13,16 @@ import { logDebug, logInfo, logWarn } from '../util/logging';
 import { JOBS_TIMEOUT_MS, MAX_CONCURRENT_REPOS, MAX_CONCURRENT_JOBS } from '../config/constants';
 import { isRunning, updateStatusBar } from './statusBarService';
 import { isJobActive } from './logStreamService';
+import { supportsPerWorkflowRuns } from '../util/version';
+import { workflowIdentity } from '../util/workflow';
 
 export type ConfigError = {
   message: string;
   action: 'configureBaseUrl' | 'setToken';
+};
+
+export type ServerVersionCache = {
+  value?: string;
 };
 
 export type RefreshServiceState = {
@@ -33,11 +39,18 @@ export type RefreshServiceState = {
   jobStepsCache: Map<string, Step[]>;
   /** Tracks the last known repo keys to detect changes */
   lastRepoKeys?: Set<string>;
+  /** Session cache for the Gitea version returned by /api/v1/version. */
+  serverVersionCache: ServerVersionCache;
+  /** Returns whether the Workflows view currently needs per-workflow history. */
+  shouldFetchPerWorkflowRuns?: () => boolean;
 };
 
 let refreshInFlight: Promise<boolean> | undefined;
 
-export function resetRefreshCaches(state: RefreshServiceState): void {
+export function resetRefreshCaches(
+  state: RefreshServiceState,
+  options?: { resetServerVersion?: boolean }
+): void {
   for (const timer of state.jobRefreshTimers.values()) {
     clearTimeout(timer);
   }
@@ -48,6 +61,9 @@ export function resetRefreshCaches(state: RefreshServiceState): void {
   state.workspaceProvider.resetJobCaches();
   state.workflowsProvider.resetJobCaches();
   state.lastRepoKeys = undefined;
+  if (options?.resetServerVersion) {
+    state.serverVersionCache.value = undefined;
+  }
 }
 
 export function cancelJobRefreshTimers(state: RefreshServiceState): void {
@@ -178,6 +194,17 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
     return false;
   }
 
+  // Probe the server version once per session (re-probed when the base URL changes).
+  // Gates the per-workflow runs endpoint (Gitea >= 1.27).
+  if (state.serverVersionCache.value === undefined) {
+    try {
+      state.serverVersionCache.value = await api.testConnection();
+      logInfo(`Gitea server version: ${state.serverVersionCache.value}`);
+    } catch (err) {
+      logDebug(`Version probe failed (will retry next refresh): ${String(err)}`);
+    }
+  }
+
   const settings = getSettings();
   const repos = await resolveRepos(api, state, settings);
   logInfo(`Refreshing Gitea Actions data (repos=${repos.length}, discovery=${settings.discoveryMode}, maxRuns=${settings.maxRunsPerRepo})`);
@@ -214,24 +241,43 @@ async function doRefreshAll(state: RefreshServiceState): Promise<boolean> {
     try {
       const runStart = Date.now();
       const workflowMap = await refreshWorkflows(api, repo, state);
+      // maxRunsPerRepo = fetch window (last N runs, any workflow).
+      // maxRunsPerWorkflow = per-workflow load/display cap in both left-bar views
+      // (0 disables the cap and the Gitea 1.27+ per-workflow history fetch).
       const runs = await api.listRuns(repo, settings.maxRunsPerRepo);
-      const limitedRuns = runs.slice(0, settings.maxRunsPerRepo);
-      limitedRuns.forEach((run) => {
+      const repoWindowRuns = runs.slice(0, settings.maxRunsPerRepo);
+      repoWindowRuns.forEach((run) => {
         const workflowId = workflowIdFromPath(run.workflowPath);
         const name = workflowId ? workflowMap?.get(workflowId) : undefined;
         if (name) {
           run.workflowName = name;
         }
       });
-      state.workspaceProvider.updateRuns(repo, limitedRuns);
-      state.workflowsProvider.updateRuns(repo, limitedRuns);
-      state.lastRunsByRepo.set(key, limitedRuns);
-      logInfo(`Runs fetched for ${repo.owner}/${repo.name}: ${limitedRuns.length} in ${Date.now() - runStart}ms`);
-      if (limitedRuns.some((r) => isRunning(r.status))) {
+      const workspaceRuns =
+        settings.maxRunsPerWorkflow > 0
+          ? limitRunsPerWorkflow(repoWindowRuns, settings.maxRunsPerWorkflow)
+          : repoWindowRuns;
+      let workflowsViewRuns = workspaceRuns;
+      if (
+        settings.maxRunsPerWorkflow > 0 &&
+        state.shouldFetchPerWorkflowRuns?.() === true &&
+        supportsPerWorkflowRuns(state.serverVersionCache.value) &&
+        workflowMap &&
+        workflowMap.size > 0
+      ) {
+        workflowsViewRuns = await fetchPerWorkflowRuns(api, repo, workflowMap, repoWindowRuns, settings);
+      }
+      state.workspaceProvider.updateRuns(repo, workspaceRuns);
+      state.workflowsProvider.updateRuns(repo, workflowsViewRuns);
+      state.lastRunsByRepo.set(key, workspaceRuns);
+      logInfo(
+        `Runs fetched for ${repo.owner}/${repo.name}: window=${repoWindowRuns.length}, displayed=${workspaceRuns.length} in ${Date.now() - runStart}ms`
+      );
+      const activeRuns = getActiveRunsForRefresh(mergeRuns(workspaceRuns, workflowsViewRuns));
+      if (activeRuns.length > 0) {
         anyRunning = true;
       }
       // Only fetch jobs for active runs that are expanded or already loaded
-      const activeRuns = limitedRuns.filter((r) => isRunning(r.status));
       const runsToPollJobs = activeRuns.filter((run) => shouldPollJobsForRun(state, repo, run.id));
       await runWithLimit(runsToPollJobs, MAX_CONCURRENT_JOBS, async (run) => {
         await fetchJobsForRun(toRunRef(repo, run), state, settings);
@@ -349,8 +395,105 @@ async function refreshWorkflows(
 }
 
 /**
+ * Fetches per-workflow run history via the Gitea 1.27+ endpoint and merges it
+ * with the repo-wide fetch window.
+ *
+ * Used by the Workflows view so quiet workflows keep history even when a busy
+ * sibling dominates the repo-wide window. The merged list is capped at
+ * maxRunsPerWorkflow per workflow. Failures for individual workflows are
+ * logged and skipped; those workflows fall back to (capped) runs from the
+ * repo-wide window.
+ */
+async function fetchPerWorkflowRuns(
+  api: GiteaApi,
+  repo: RepoRef,
+  workflowMap: Map<string, string>,
+  baseRuns: WorkflowRun[],
+  settings: ExtensionSettings
+): Promise<WorkflowRun[]> {
+  const workflowIds = Array.from(workflowMap.keys());
+  const perWorkflow: WorkflowRun[] = [];
+  const fetchStart = Date.now();
+  await runWithLimit(workflowIds, MAX_CONCURRENT_JOBS, async (workflowId) => {
+    try {
+      const runs = await api.listWorkflowRuns(repo, workflowId, settings.maxRunsPerWorkflow);
+      const limited = runs.slice(0, settings.maxRunsPerWorkflow);
+      limited.forEach((run) => {
+        // Ensure grouping key exists even if the endpoint omits the path
+        if (!run.workflowPath) {
+          run.workflowPath = workflowId;
+        }
+        const name = workflowMap.get(workflowIdFromPath(run.workflowPath) ?? workflowId);
+        if (name) {
+          run.workflowName = name;
+        }
+      });
+      perWorkflow.push(...limited);
+    } catch (err) {
+      logWarn(`Failed to fetch runs for workflow ${workflowId} in ${repo.owner}/${repo.name}: ${String(err)}`);
+    }
+  });
+  const merged = limitRunsPerWorkflow(mergeRuns(baseRuns, perWorkflow), settings.maxRunsPerWorkflow);
+  logDebug(
+    `Per-workflow runs for ${repo.owner}/${repo.name}: ${merged.length} total across ${workflowIds.length} workflow(s) in ${Date.now() - fetchStart}ms`
+  );
+  return merged;
+}
+
+/**
+ * Merges two run lists, deduplicating by run id (primary wins) and sorting by
+ * most recent activity descending.
+ * Exported for testing.
+ */
+export function mergeRuns(primary: WorkflowRun[], extra: WorkflowRun[]): WorkflowRun[] {
+  const seen = new Set(primary.map((r) => String(r.id)));
+  const merged = [...primary];
+  for (const run of extra) {
+    const id = String(run.id);
+    if (!seen.has(id)) {
+      seen.add(id);
+      merged.push(run);
+    }
+  }
+  merged.sort((a, b) => {
+    const aTime = a.updatedAt ?? a.completedAt ?? a.startedAt ?? a.createdAt ?? '';
+    const bTime = b.updatedAt ?? b.completedAt ?? b.startedAt ?? b.createdAt ?? '';
+    return bTime.localeCompare(aTime);
+  });
+  return merged;
+}
+
+/**
+ * Keeps at most `limit` most-recent runs per workflow (same identity key as the
+ * Workflows tree). Runs are assumed already sorted by activity descending.
+ * Exported for testing.
+ */
+export function limitRunsPerWorkflow(runs: WorkflowRun[], limit: number): WorkflowRun[] {
+  if (limit <= 0) {
+    return runs;
+  }
+  const kept = new Map<string, number>();
+  const result: WorkflowRun[] = [];
+  for (const run of runs) {
+    const key = workflowIdentity(run);
+    const count = kept.get(key) ?? 0;
+    if (count >= limit) {
+      continue;
+    }
+    kept.set(key, count + 1);
+    result.push(run);
+  }
+  return result;
+}
+
+/** Returns every active run that should keep refreshes and job polling on the active cadence. */
+export function getActiveRunsForRefresh(runs: WorkflowRun[]): WorkflowRun[] {
+  return runs.filter((run) => isRunning(run.status));
+}
+
+/**
  * Fetches jobs for a workflow run.
- * 
+ *
  * @param runRef - Reference containing repo, run ID, and run number
  * @param state - Refresh service state
  * @param settings - Extension settings

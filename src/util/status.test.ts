@@ -32,6 +32,12 @@ describe('normalizeStatus', () => {
     expect(normalizeStatus('progress')).toBe('running');
   });
 
+  it('returns "running" for cancelling status (Gitea 1.27+ transitional state)', () => {
+    expect(normalizeStatus('cancelling')).toBe('running');
+    expect(normalizeStatus('Cancelling')).toBe('running');
+    expect(normalizeStatus('canceling')).toBe('running');
+  });
+
   it('returns "completed" for completed status', () => {
     expect(normalizeStatus('completed')).toBe('completed');
     expect(normalizeStatus('Completed')).toBe('completed');

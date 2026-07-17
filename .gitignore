@@ -4,3 +4,4 @@ dist
 *.vsix
 *.log
 .release-notes.md
+.claude/settings.local.json

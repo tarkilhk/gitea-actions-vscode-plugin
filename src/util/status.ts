@@ -16,7 +16,10 @@ export function normalizeStatus(value?: string | null): NormalizedStatus {
   if (lower === 'queued' || lower === 'waiting') {
     return 'queued';
   }
-  if (lower === 'in_progress' || lower === 'running' || lower === 'progress') {
+  // Gitea 1.27+ reports a transitional "cancelling" state while post-run and
+  // always()/cancelled() cleanup steps execute. Treat it as running so polling
+  // continues until the job is finalized as cancelled.
+  if (lower === 'in_progress' || lower === 'running' || lower === 'progress' || lower === 'cancelling' || lower === 'canceling') {
     return 'running';
   }
   if (lower === 'completed' || lower === 'finished') {

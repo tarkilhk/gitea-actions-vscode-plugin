@@ -293,6 +293,48 @@ describe('mapStep', () => {
   });
 });
 
+describe('listWorkflowRuns', () => {
+  it('fetches runs from the per-workflow endpoint and maps them', async () => {
+    const paths: string[] = [];
+    const client = {
+      getJson: async (path: string) => {
+        paths.push(path);
+        return {
+          ['workflow_runs']: [
+            { id: 1, status: 'completed', conclusion: 'success', path: '.gitea/workflows/ci.yml' },
+            { id: 2, status: 'running', path: '.gitea/workflows/ci.yml' }
+          ]
+        };
+      }
+    } as unknown as GiteaClient;
+
+    const api = new GiteaApi(client);
+    const runs = await api.listWorkflowRuns(mockRepo, 'ci.yml', 20);
+
+    expect(paths).toEqual(['/api/v1/repos/testowner/testrepo/actions/workflows/ci.yml/runs?limit=20']);
+    expect(runs).toHaveLength(2);
+    expect(runs[0].id).toBe(1);
+    expect(runs[0].conclusion).toBe('success');
+    expect(runs[0].workflowPath).toBe('.gitea/workflows/ci.yml');
+    expect(runs[1].status).toBe('running');
+  });
+
+  it('encodes the workflow id in the path', async () => {
+    const paths: string[] = [];
+    const client = {
+      getJson: async (path: string) => {
+        paths.push(path);
+        return [];
+      }
+    } as unknown as GiteaClient;
+
+    const api = new GiteaApi(client);
+    await api.listWorkflowRuns(mockRepo, 'my workflow.yml', 5);
+
+    expect(paths[0]).toContain('/actions/workflows/my%20workflow.yml/runs');
+  });
+});
+
 describe('listAccessibleRepos', () => {
   it('loads all accessible repos via /repos/search pagination', async () => {
     const paths: string[] = [];

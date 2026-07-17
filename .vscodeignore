@@ -3,6 +3,7 @@
 .git/**
 .github/**
 .vscode/**
+.claude/**
 tsconfig.json
 esbuild.js
 **/*.ts

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-07-17
+
+### ✨ Added
+
+- **Per-workflow run history** (Gitea 1.27+): the **Workflows** view now fetches up to `giteaActions.maxRunsPerWorkflow` runs (default `5`) for each workflow via the new `GET /actions/workflows/{workflow_id}/runs` API, so infrequently-run workflows keep their history visible even when a busy workflow dominates the repository's recent runs.
+- Clearer split between run limits: `maxRunsPerRepo` is the repository-wide fetch window (last N runs, any workflow); `maxRunsPerWorkflow` caps how many runs per workflow are loaded/displayed in both sidebar views. Set `maxRunsPerWorkflow` to `0` to disable the cap and the per-workflow history fetch.
+- The Gitea server version is now probed once per session and used to enable version-gated features; older Gitea versions keep the previous behavior exactly.
+
+### 🐛 Fixed
+
+- Both sidebar views now apply `giteaActions.maxRunsPerWorkflow` as a per-workflow display cap on top of the `maxRunsPerRepo` fetch window, so a busy workflow no longer floods the tree past the configured limit.
+- Jobs in the transitional **cancelling** state (introduced in Gitea 1.27 with Gitea Runner 2.0) now display as running and keep polling until cleanup steps finish, instead of showing an unknown status icon and freezing updates.
+
 ## [2.6.3] - 2026-06-16
 
 ### ✨ Added

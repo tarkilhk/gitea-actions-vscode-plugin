@@ -172,6 +172,22 @@ export class GiteaApi {
     return runs.map((run) => mapRun(repo, run));
   }
 
+  /**
+   * Lists runs for a single workflow.
+   *
+   * Uses GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs,
+   * available since Gitea 1.27.0 (#37196). Callers should version-gate via
+   * supportsPerWorkflowRuns() before using this.
+   */
+  async listWorkflowRuns(repo: RepoRef, workflowId: string, limit: number): Promise<WorkflowRun[]> {
+    const path = `/api/v1/repos/${repo.owner}/${repo.name}/actions/workflows/${encodeURIComponent(
+      workflowId
+    )}/runs?limit=${encodeURIComponent(limit)}`;
+    const payload = await this.client.getJson<unknown>(path);
+    const runs = pickArray<unknown>(payload, []);
+    return runs.map((run) => mapRun(repo, run));
+  }
+
   async getDefaultBranch(repo: RepoRef): Promise<string> {
     const path = `/api/v1/repos/${repo.owner}/${repo.name}`;
     const payload = await this.client.getJson<{ default_branch?: string }>(path);

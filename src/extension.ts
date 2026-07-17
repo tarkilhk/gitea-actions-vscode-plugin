@@ -58,6 +58,7 @@ import {
 } from './services/statusBarService';
 import {
   RefreshServiceState,
+  ServerVersionCache,
   resetRefreshCaches,
   cancelJobRefreshTimers,
   refreshAll,
@@ -92,6 +93,7 @@ const workflowNameCache = new Map<string, Map<string, string>>();
 const inFlightJobFetch = new Map<string, Promise<Job[] | undefined>>();
 const jobRefreshTimers = new Map<string, NodeJS.Timeout>();
 const jobStepsCache = new Map<string, Step[]>();
+const serverVersionCache: ServerVersionCache = {};
 
 const logContentProvider = new LiveLogContentProvider();
 
@@ -110,7 +112,9 @@ function getRefreshState(): RefreshServiceState {
     workflowNameCache,
     inFlightJobFetch,
     jobRefreshTimers,
-    jobStepsCache
+    jobStepsCache,
+    serverVersionCache,
+    shouldFetchPerWorkflowRuns: () => workflowsVisible
   };
 }
 
@@ -233,7 +237,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         settings = getSettings();
         setVerboseLogging(settings.verboseLogging);
         logInfo(`Gitea Actions configuration changed (baseUrl=${settings.baseUrl || 'not set'}, discovery=${settings.discoveryMode}, verboseLogging=${settings.verboseLogging})`);
-        resetRefreshCaches(getRefreshState());
+        resetRefreshCaches(getRefreshState(), {
+          resetServerVersion: event.affectsConfiguration('giteaActions.baseUrl')
+        });
         scheduleRefresh();
       }
     })
@@ -479,4 +485,3 @@ function workflowIdFromPath(path?: string): string | undefined {
   const file = parts[parts.length - 1];
   return file || undefined;
 }
-

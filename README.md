@@ -88,6 +88,8 @@ When you have a single repository open, it auto-expands for quick access.
 ### Workflows
 Groups runs by workflow name — useful when you want to see all runs of a specific workflow across your repositories.
 
+`giteaActions.maxRunsPerRepo` controls how far back the repository-wide run list is loaded; `giteaActions.maxRunsPerWorkflow` caps how many runs per workflow are shown in both sidebar views. On Gitea 1.27+, the Workflows view also fetches each workflow's own recent history up to that per-workflow limit, so infrequently-run workflows stay visible even when another workflow dominates the repository's recent runs.
+
 ### Settings
 Manage your extension configuration:
 - **Token** — Set or clear your Personal Access Token
@@ -105,7 +107,8 @@ Manage your extension configuration:
 | `giteaActions.refresh.runningIntervalSeconds` | `15` | Polling interval when runs are active |
 | `giteaActions.refresh.jobsIntervalSeconds` | `5` | Polling interval for active run job/step refresh |
 | `giteaActions.logs.pollIntervalSeconds` | `5` | Polling interval for job/step log streaming |
-| `giteaActions.maxRunsPerRepo` | `20` | Maximum runs to fetch per repository |
+| `giteaActions.maxRunsPerRepo` | `20` | Repository-wide fetch window (last N runs, any workflow) |
+| `giteaActions.maxRunsPerWorkflow` | `5` | Max runs to load/display per workflow in both sidebar views (`0` disables the cap; Gitea 1.27+ also uses this for per-workflow history fetch) |
 | `giteaActions.maxJobsPerRun` | `50` | Maximum jobs to fetch per run |
 | `giteaActions.tls.insecureSkipVerify` | `false` | Skip TLS verification (not recommended) |
 
