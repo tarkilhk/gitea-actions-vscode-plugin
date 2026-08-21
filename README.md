@@ -129,15 +129,9 @@ Manage your extension configuration:
 
 ## Steps and Gitea Limitations
 
-Job **steps** (the list under each job) are unfortunately limited by Gitea's API:
+On **Gitea 1.26 and later**, job steps come from the official Actions API (`GET /repos/{owner}/{repo}/actions/runs/{run}/jobs`). Private and public repositories work the same. Job logs come from `GET /actions/jobs/{job_id}/logs`. Step logs are sliced out of that job log (Gitea still has no official per-step log endpoint).
 
-1. **Official API** — The Gitea API schema includes a `steps` field on jobs, but **Gitea has never implemented populating it** — it always returns `null`. We still call it in case a future Gitea version starts returning steps.
-
-2. **Internal (web UI) API** — The extension falls back to the same endpoint the Gitea web UI uses. **Gitea only allows PAT access to this endpoint for public repos.** For private repos the run page returns 404, so step details cannot be loaded.
-
-**Bottom line:** If you see "Steps unavailable: Gitea does not expose step details for private repos", this is a Gitea limitation: step breakdown works for public repos only. Job logs still work via the official logs API for all repos — only the per-step breakdown is affected.
-
-**Workaround for older Gitea:** If you're running Gitea 1.23 or earlier, steps should still work.
+On **older Gitea**, the steps field was left `null`. The extension then tries `GET /actions/jobs/{job_id}` and, if needed, the same web UI endpoint the browser uses. Gitea only allows PAT access to that web UI route for **public** repos, so private repos on those versions may show "Steps unavailable…".
 
 ### Diagnose Steps
 

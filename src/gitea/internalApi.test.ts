@@ -227,48 +227,6 @@ describe('GiteaInternalApi', () => {
     });
   });
 
-  describe('getAllStepLogs', () => {
-    it('fetches logs for all steps with all expanded', async () => {
-      const mockResponse = createMockJobResponse({
-        logs: {
-          stepsLog: [
-            { step: 0, cursor: 5, lines: [{ index: 1, message: 'Log 1', timestamp: 1700000000 }] },
-            { step: 1, cursor: 3, lines: [{ index: 1, message: 'Log 2', timestamp: 1700000001 }] }
-          ]
-        }
-      });
-      const client = createMockClient(mockResponse);
-      const api = new GiteaInternalApi(client);
-
-      const result = await api.getAllStepLogs(mockRepo, 123, 0, 2);
-
-      expect(result).toHaveLength(2);
-      expect(result[0].step).toBe(0);
-      expect(result[1].step).toBe(1);
-    });
-
-    it('sends all steps as expanded in payload', async () => {
-      const mockResponse = createMockJobResponse();
-      const client = createMockClient(mockResponse);
-      const api = new GiteaInternalApi(client);
-
-      await api.getAllStepLogs(mockRepo, 123, 0, 3);
-
-      expect(client.request).toHaveBeenCalledWith(
-        '/testowner/testrepo/actions/runs/123/jobs/0',
-        expect.objectContaining({
-          body: JSON.stringify({
-            logCursors: [
-              { step: 0, cursor: null, expanded: true },
-              { step: 1, cursor: null, expanded: true },
-              { step: 2, cursor: null, expanded: true }
-            ]
-          })
-        })
-      );
-    });
-  });
-
   describe('formatStepLogs', () => {
     it('formats step log lines with timestamps', () => {
       const stepLog: StepLog = {
@@ -297,27 +255,6 @@ describe('GiteaInternalApi', () => {
       const result = GiteaInternalApi.formatStepLogs(stepLog);
 
       expect(result).toBe('(No log output)');
-    });
-  });
-
-  describe('formatAllStepLogs', () => {
-    it('formats multiple step logs with headers', () => {
-      const stepLogs: StepLog[] = [
-        { step: 0, cursor: null, lines: [{ index: 1, message: 'Step 0 log', timestamp: 1700000000 }] },
-        { step: 1, cursor: null, lines: [{ index: 1, message: 'Step 1 log', timestamp: 1700000001 }] }
-      ];
-      const steps = [
-        { name: 'Setup', status: 'completed' as const },
-        { name: 'Build', status: 'completed' as const }
-      ];
-
-      const result = GiteaInternalApi.formatAllStepLogs(stepLogs, steps);
-
-      expect(result).toContain('[Step 0] Setup');
-      expect(result).toContain('[Step 1] Build');
-      expect(result).toContain('Step 0 log');
-      expect(result).toContain('Step 1 log');
-      expect(result).toContain('='.repeat(60)); // Header separator
     });
   });
 

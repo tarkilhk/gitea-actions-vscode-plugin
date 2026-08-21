@@ -1,4 +1,5 @@
 import { Agent, Dispatcher, Headers, RequestInit, Response, fetch } from 'undici';
+import { isAbortError } from '../util/errors';
 import { logDebug } from '../util/logging';
 
 export interface ClientOptions {
@@ -74,6 +75,11 @@ export class GiteaClient {
         signal: controller.signal
       });
       return response as Response;
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw new Error(`Request timed out after ${timeoutMs}ms`);
+      }
+      throw error;
     } finally {
       clearTimeout(timeout);
     }

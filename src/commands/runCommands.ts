@@ -3,6 +3,7 @@ import { GiteaApi } from '../gitea/api';
 import { GiteaInternalApi } from '../gitea/internalApi';
 import { Job, RepoRef, RunRef, Step } from '../gitea/models';
 import { ActionsNode, StepNode, JobNode } from '../views/nodes';
+import { supportsOfficialJobSteps } from '../util/version';
 
 export type LogStreamContext = {
   getConfigError: () => Promise<string | undefined>;
@@ -35,8 +36,7 @@ export type LogStreamContext = {
     job: Job,
     jobIndex: number,
     stepIndex: number,
-    totalSteps: number,
-    isActive: () => boolean
+    totalSteps: number
   ) => Promise<void>;
   buildLogUri: (
     repo: RepoRef,
@@ -53,11 +53,13 @@ export type LogStreamContext = {
   ) => vscode.Uri;
   isJobActive: (status?: string) => boolean;
   isStepActive: (step: Step) => boolean;
+  getServerVersion?: () => string | null | undefined;
 };
 
 /**
  * Views logs for a job or step.
- * For steps, tries official job logs first and falls back to the internal API.
+ * For steps, uses official job logs on Gitea 1.26+ and falls back to the
+ * internal web UI API on older servers.
  */
 export async function viewJobLogs(
   node: ActionsNode,
@@ -132,7 +134,8 @@ async function viewStepLogs(
     vscode.window.showErrorMessage('Failed to initialize API client.');
     return;
   }
-  const internalApi = await ctx.ensureInternalApi();
+  const preferOfficialLogs = supportsOfficialJobSteps(ctx.getServerVersion?.());
+  const internalApi = preferOfficialLogs ? undefined : await ctx.ensureInternalApi();
 
   const { runRef, job, step, jobIndex, stepIndex } = node;
   const { repo, id: runId } = runRef;
@@ -158,8 +161,7 @@ async function viewStepLogs(
       job,
       jobIndex,
       stepIndex,
-      totalSteps,
-      () => ctx.isStepActive(step)
+      totalSteps
     ).catch((err) =>
       vscode.window.showErrorMessage(`Live step log stream stopped: ${err instanceof Error ? err.message : String(err)}`)
     );

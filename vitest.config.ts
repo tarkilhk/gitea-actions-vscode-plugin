@@ -6,12 +6,12 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts'],
-    exclude: ['node_modules', 'dist'],
+    exclude: ['node_modules', 'dist', 'out', 'src/test/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts', 'src/extension.ts', 'src/__mocks__/**']
+      exclude: ['src/**/*.test.ts', 'src/extension.ts', 'src/__mocks__/**', 'src/test/**']
     }
   },
   resolve: {

@@ -2,9 +2,25 @@ import * as vscode from 'vscode';
 import { logError } from './logging';
 
 /**
+ * True when a request was cancelled by AbortController (client timeout).
+ * undici/Node surfaces this as AbortError with "This operation was aborted".
+ */
+export function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const name = 'name' in error ? String(error.name) : '';
+  const message = 'message' in error ? String(error.message) : String(error);
+  return name === 'AbortError' || message.includes('This operation was aborted');
+}
+
+/**
  * Extracts an error message from an unknown error value.
  */
 export function getErrorMessage(error: unknown): string {
+  if (isAbortError(error)) {
+    return 'The request timed out waiting for Gitea.';
+  }
   if (error instanceof Error) {
     return error.message;
   }

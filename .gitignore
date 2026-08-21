@@ -1,6 +1,10 @@
 node_modules
 dist
+out
 .vscode
+.vscode-test
+.env
+.env.*
 *.vsix
 *.log
 .release-notes.md

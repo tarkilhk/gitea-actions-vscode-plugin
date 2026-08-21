@@ -98,8 +98,8 @@ export type Job = {
   htmlUrl?: string;
   steps?: Step[];
   /**
-   * Error message when steps could not be loaded.
-   * Set when Gitea's internal API returns 404/401 (session-gated).
+   * Error message when steps could not be loaded via the legacy web UI fallback.
+   * Not used on Gitea 1.26+, where listJobs already includes steps.
    */
   stepsError?: string;
 };

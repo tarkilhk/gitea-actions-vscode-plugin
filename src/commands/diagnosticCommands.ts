@@ -76,7 +76,7 @@ async function resolveTarget(node: ActionsNode | undefined, ctx: DiagnoseContext
   const ownerRepo = await vscode.window.showInputBox({
     title: 'Diagnose steps',
     prompt: 'Enter repository as owner/name',
-    placeHolder: 'tarkil/homelab-infra',
+    placeHolder: 'owner/repo',
     ignoreFocusOut: true,
     validateInput: (value) => {
       const v = value.trim();
@@ -198,20 +198,23 @@ export async function diagnoseSteps(node: ActionsNode | undefined, ctx: Diagnose
   }
 
   // Jobs + steps comparison
-  let jobs: Array<{ id: number | string; name: string; status?: string }> = [];
+  let listedJobs: Awaited<ReturnType<GiteaApi['listJobs']>> = [];
   try {
-    const listed = await api.listJobs(repo, runRef.id, { limit: 50 });
-    jobs = listed.map((j) => ({ id: j.id, name: j.name, status: j.status }));
-    channel.appendLine(`listJobs: ${jobs.length} job(s)`);
+    listedJobs = await api.listJobs(repo, runRef.id, { limit: 50 });
+    channel.appendLine(`listJobs: ${listedJobs.length} job(s)`);
   } catch (e) {
     channel.appendLine(`listJobs: ERROR: ${e instanceof Error ? e.message : String(e)}`);
     return;
   }
 
-  for (let jobIndex = 0; jobIndex < jobs.length; jobIndex++) {
-    const j = jobs[jobIndex];
+  for (let jobIndex = 0; jobIndex < listedJobs.length; jobIndex++) {
+    const j = listedJobs[jobIndex];
+    const listSteps = j.steps;
     channel.appendLine('------------------------------');
     channel.appendLine(`job[${jobIndex}]: ${j.name} (id=${j.id}, status=${j.status ?? 'unknown'})`);
+    channel.appendLine(
+      `official GET .../actions/runs/${runRef.id}/jobs: steps=${listSteps?.length ?? 0}${listSteps == null ? ' (null/undefined)' : ''}`
+    );
 
     // Official: GET /actions/jobs/{job_id}
     try {
@@ -246,6 +249,7 @@ export async function diagnoseSteps(node: ActionsNode | undefined, ctx: Diagnose
 
   channel.appendLine('==============================');
   channel.appendLine('Interpretation hints:');
-  channel.appendLine('- If official steps is null/0 AND internal returns 401/404 or login HTML, steps are session-gated in Gitea web UI for this repo.');
-  channel.appendLine('- If repo.private is true, that strongly correlates with web UI gating unless you have browser cookies.');
+  channel.appendLine('- Gitea 1.26+ should populate steps on listJobs. If that shows steps, the extension uses them directly.');
+  channel.appendLine('- If listJobs steps is null/0 AND internal returns 401/404 or login HTML, the web UI fallback is session-gated (typical for private repos on older Gitea).');
+  channel.appendLine('- If repo.private is true on Gitea older than 1.26, web UI gating is expected unless you have browser cookies.');
 }

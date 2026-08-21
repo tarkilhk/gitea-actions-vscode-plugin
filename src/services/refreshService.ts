@@ -9,11 +9,13 @@ import { discoverWorkspaceRepos } from '../gitea/discovery';
 import { ActionsTreeProvider } from '../views/actionsTreeProvider';
 import { SettingsTreeProvider } from '../views/settingsTreeProvider';
 import { RunNode } from '../views/nodes';
+import { getErrorMessage } from '../util/errors';
 import { logDebug, logInfo, logWarn } from '../util/logging';
 import { JOBS_TIMEOUT_MS, MAX_CONCURRENT_REPOS, MAX_CONCURRENT_JOBS } from '../config/constants';
 import { isRunning, updateStatusBar } from './statusBarService';
 import { isJobActive } from './logStreamService';
 import { supportsPerWorkflowRuns } from '../util/version';
+import { shouldUseLegacyStepFallback, jobsMissingOfficialSteps } from '../gitea/jobSteps';
 import { workflowIdentity } from '../util/workflow';
 
 export type ConfigError = {
@@ -532,19 +534,25 @@ export async function fetchJobsForRun(
       const start = Date.now();
       // Official API uses database ID
       const jobs = await api.listJobs(repo, runId, { limit: settings.maxJobsPerRun, timeoutMs: JOBS_TIMEOUT_MS });
-      // Try official API for steps first: GET /actions/jobs/{job_id} can return steps (Gitea 1.24+)
-      await hydrateJobStepsFromOfficialApi(api, repo, jobs);
-      // Fallback: internal (web UI) API for steps when official API returns null/empty
-      const hydratedCount = await hydrateJobSteps(runRef, jobs, state, { forceRefresh: options?.refreshOnly ?? false });
+      let hydrationNote = '';
+      if (shouldUseLegacyStepFallback(state.serverVersionCache.value, jobs)) {
+        // Pre-1.26: listJobs left steps null. Try GET /actions/jobs/{id}, then the web UI.
+        await hydrateJobStepsFromOfficialApi(api, repo, jobs);
+        const hydratedCount = await hydrateJobSteps(runRef, jobs, state, { forceRefresh: options?.refreshOnly ?? false });
+        hydrationNote = hydratedCount ? ` (legacy steps fetched for ${hydratedCount} job${hydratedCount === 1 ? '' : 's'})` : '';
+      } else {
+        logDebug(
+          `Using official listJobs steps for ${repo.owner}/${repo.name} run ${runId} (Gitea ${state.serverVersionCache.value ?? 'unknown'})`
+        );
+      }
       const elapsed = Date.now() - start;
-      const hydrationNote = hydratedCount ? ` (steps fetched for ${hydratedCount} job${hydratedCount === 1 ? '' : 's'})` : '';
       logDebug(`Fetched ${jobs.length} jobs for ${repo.owner}/${repo.name} run ${runId} in ${elapsed}ms${hydrationNote}`);
       state.workspaceProvider.updateJobs(repo, runId, jobs, options?.runNode);
       state.workflowsProvider.updateJobs(repo, runId, jobs, options?.runNode);
       scheduleJobRefresh(runRef, jobs, state, settings);
       return jobs;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       logWarn(`Failed to fetch jobs for ${repo.owner}/${repo.name} run ${runId}: ${message}`);
       state.workspaceProvider.setRunJobsError(repo, runId, message, options?.runNode);
       state.workflowsProvider.setRunJobsError(repo, runId, message, options?.runNode);
@@ -557,45 +565,37 @@ export async function fetchJobsForRun(
 }
 
 /**
- * Tries to fill job steps from the official Gitea API.
+ * Tries to fill job steps from GET /actions/jobs/{job_id}.
  *
- * Newer Gitea versions populate `steps` on
- * GET /api/v1/repos/{owner}/{repo}/actions/jobs/{job_id}. Older versions often
- * returned null, so the internal web UI fallback below remains useful.
+ * Used only on Gitea versions that leave listJobs `steps` null. 1.26+ already
+ * includes steps on the list payload, so fetchJobsForRun skips this.
  */
 async function hydrateJobStepsFromOfficialApi(
   api: GiteaApi,
   repo: RepoRef,
   jobs: Job[]
 ): Promise<void> {
-  const needSteps = jobs.filter((j) => !j.steps?.length && !j.stepsError);
+  const needSteps = jobsMissingOfficialSteps(jobs);
   if (!needSteps.length) return;
   await runWithLimit(needSteps, MAX_CONCURRENT_JOBS, async (job) => {
     try {
       const full = await api.getJob(repo, job.id);
-      if (full.steps?.length) {
+      if (full.steps !== undefined) {
         job.steps = full.steps;
-        logDebug(`Steps for job ${job.name} (${job.id}) from official API: ${full.steps.length}`);
+        logDebug(`Steps for job ${job.name} (${job.id}) from official getJob: ${full.steps.length}`);
       }
     } catch {
-      // Ignore; hydrateJobSteps will try internal API fallback
+      // Ignore; hydrateJobSteps will try the web UI fallback
     }
   });
 }
 
 /**
- * Hydrates job steps using the internal Gitea web UI API.
+ * Hydrates job steps using the undocumented Gitea web UI API.
  *
- * Used as a fallback when the official API does not return step data. Gitea
- * only allows PAT access to this endpoint for some instances/repos; private
- * repos can return 404 even when official API calls work.
- *
- * On 404/401 we set `job.stepsError` so the UI can show a clear message (private vs public).
- *
- * @param runRef - Reference containing repo and run identifiers
- * @param jobs - Jobs to hydrate with step data
- * @param state - Refresh service state
- * @param options - Optional settings (forceRefresh re-fetches steps even if cached)
+ * Legacy fallback for servers older than 1.26, and only for jobs whose official
+ * payload still omitted `steps`. Gitea often 404s this endpoint for private
+ * repos when the request uses a PAT.
  */
 export async function hydrateJobSteps(
   runRef: RunRef,
@@ -603,6 +603,9 @@ export async function hydrateJobSteps(
   state: RefreshServiceState,
   options?: { forceRefresh?: boolean }
 ): Promise<number> {
+  if (!shouldUseLegacyStepFallback(state.serverVersionCache.value, jobs)) {
+    return 0;
+  }
   const { repo } = runRef;
   // Internal (web UI) API only accepts run_number in the URL (e.g. .../actions/runs/24). Db id is not used.
   if (runRef.runNumber == null) {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseVersion, isVersionAtLeast, supportsPerWorkflowRuns } from './version';
+import { parseVersion, isVersionAtLeast, supportsPerWorkflowRuns, supportsOfficialJobSteps } from './version';
 
 describe('parseVersion', () => {
   it('parses plain versions', () => {
@@ -59,5 +59,39 @@ describe('supportsPerWorkflowRuns', () => {
   it('is disabled for older or unknown versions', () => {
     expect(supportsPerWorkflowRuns('1.26.4')).toBe(false);
     expect(supportsPerWorkflowRuns(undefined)).toBe(false);
+  });
+});
+
+describe('supportsOfficialJobSteps', () => {
+  it('is enabled from 1.26.0 onwards', () => {
+    expect(supportsOfficialJobSteps('1.26.0')).toBe(true);
+    expect(supportsOfficialJobSteps('1.26.4')).toBe(true);
+    expect(supportsOfficialJobSteps('1.27.2')).toBe(true);
+  });
+
+  it('is disabled for older or unknown versions', () => {
+    expect(supportsOfficialJobSteps('1.25.4')).toBe(false);
+    expect(supportsOfficialJobSteps(undefined)).toBe(false);
+  });
+});
+
+describe('compatibility matrix (unknown version is treated as old)', () => {
+  const cases: Array<{
+    version: string | undefined;
+    officialSteps: boolean;
+    perWorkflowRuns: boolean;
+  }> = [
+    { version: undefined, officialSteps: false, perWorkflowRuns: false },
+    { version: '1.24.6', officialSteps: false, perWorkflowRuns: false },
+    { version: '1.25.4', officialSteps: false, perWorkflowRuns: false },
+    { version: '1.26.0', officialSteps: true, perWorkflowRuns: false },
+    { version: '1.26.4', officialSteps: true, perWorkflowRuns: false },
+    { version: '1.27.0', officialSteps: true, perWorkflowRuns: true },
+    { version: '1.27.2', officialSteps: true, perWorkflowRuns: true }
+  ];
+
+  it.each(cases)('$version', ({ version, officialSteps, perWorkflowRuns }) => {
+    expect(supportsOfficialJobSteps(version)).toBe(officialSteps);
+    expect(supportsPerWorkflowRuns(version)).toBe(perWorkflowRuns);
   });
 });

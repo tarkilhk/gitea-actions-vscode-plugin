@@ -26,7 +26,8 @@ export function parseVersion(version?: string | null): { major: number; minor: n
 
 /**
  * Returns true when `version` is at least `major.minor`.
- * Unparseable/unknown versions return false (assume older server).
+ * Unparseable/unknown versions return false (assume an older server, never
+ * enable a newer-only API).
  */
 export function isVersionAtLeast(version: string | null | undefined, major: number, minor: number): boolean {
   const parsed = parseVersion(version);
@@ -45,4 +46,13 @@ export function isVersionAtLeast(version: string | null | undefined, major: numb
  */
 export function supportsPerWorkflowRuns(version: string | null | undefined): boolean {
   return isVersionAtLeast(version, 1, 27);
+}
+
+/**
+ * Gitea 1.26.0 started populating `steps` on
+ * GET /repos/{owner}/{repo}/actions/runs/{run}/jobs (#36603).
+ * Older servers left the field null.
+ */
+export function supportsOfficialJobSteps(version: string | null | undefined): boolean {
+  return isVersionAtLeast(version, 1, 26);
 }

@@ -30,6 +30,20 @@ module.exports = tseslint.config(
     },
   },
   {
-    ignores: ['dist/**', 'node_modules/**', '*.vsix', '**/*.js'],
+    files: ['**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        AbortController: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+      },
+    },
+  },
+  {
+    ignores: ['dist/**', 'out/**', 'node_modules/**', '.vscode-test/**', 'docs/**', '*.vsix', '**/*.js'],
   }
 );

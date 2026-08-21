@@ -5,6 +5,8 @@ import { RepoRef, RunRef, Job, Step } from '../gitea/models';
 import { ExtractedStepLog, extractStepLogFromJobLog } from '../gitea/logs';
 import { JOBS_TIMEOUT_MS } from '../config/constants';
 import { normalizeStatus } from '../util/status';
+import { supportsOfficialJobSteps } from '../util/version';
+import { shouldUseLegacyStepFallback } from '../gitea/jobSteps';
 import { ExtensionSettings } from '../config/settings';
 import { logInfo, logWarn } from '../util/logging';
 
@@ -112,6 +114,7 @@ export type LogStreamDependencies = {
   updateJobs: (repo: RepoRef, runId: number | string, jobs: Job[]) => void;
   hydrateJobSteps: (runRef: RunRef, jobs: Job[], options?: { forceRefresh?: boolean }) => Promise<number>;
   scheduleJobRefresh: (runRef: RunRef, jobs: Job[]) => void;
+  getServerVersion?: () => string | null | undefined;
 };
 
 /**
@@ -156,8 +159,9 @@ export async function startLogStream(
       try {
         const settings = deps.getSettings();
         const jobs = await api.listJobs(repo, runRef.id, { limit: settings.maxJobsPerRun, timeoutMs: JOBS_TIMEOUT_MS });
-        // Force refresh steps when actively monitoring to get updated statuses
-        await deps.hydrateJobSteps(runRef, jobs, { forceRefresh: true });
+        if (shouldUseLegacyStepFallback(deps.getServerVersion?.(), jobs)) {
+          await deps.hydrateJobSteps(runRef, jobs, { forceRefresh: true });
+        }
         deps.updateJobs(repo, runRef.id, jobs);
         deps.scheduleJobRefresh(runRef, jobs);
         const job = jobs.find((j) => String(j.id) === String(jobId));
@@ -189,7 +193,52 @@ function sleep(ms: number): Promise<void> {
 export type StepLogStreamDependencies = {
   logContentProvider: LiveLogContentProvider;
   getSettings: () => ExtensionSettings;
+  getServerVersion?: () => string | null | undefined;
 };
+
+type ResolvedStepLog = { ok: true; content: string } | { ok: false; message: string };
+
+async function resolveStepLog(
+  api: GiteaApi,
+  internalApi: GiteaInternalApi | undefined,
+  runRef: RunRef,
+  job: Job,
+  jobIndex: number,
+  stepIndex: number,
+  totalSteps: number,
+  version: string | null | undefined
+): Promise<ResolvedStepLog> {
+  const modern = supportsOfficialJobSteps(version);
+  let official: ExtractedStepLog | undefined;
+  let officialError: string | undefined;
+
+  try {
+    official = await getOfficialStepLog(api, runRef, job, stepIndex);
+    if (official?.exact || (official && modern)) {
+      return { ok: true, content: official.content };
+    }
+  } catch (error) {
+    officialError = error instanceof Error ? error.message : String(error);
+  }
+
+  if (!modern) {
+    const internal = await getInternalStepLog(internalApi, runRef, job, jobIndex, stepIndex, totalSteps);
+    if (internal.content) {
+      return { ok: true, content: internal.content };
+    }
+    if (!official) {
+      return {
+        ok: false,
+        message: `Failed to load step logs: official API${officialError ? ` (${officialError})` : ''}; internal API (${internal.error})`
+      };
+    }
+  }
+
+  if (official) {
+    return { ok: true, content: official.content };
+  }
+  return { ok: false, message: `Failed to load step logs${officialError ? `: ${officialError}` : ''}` };
+}
 
 async function getOfficialStepLog(
   api: GiteaApi,
@@ -254,18 +303,9 @@ async function getInternalStepLog(
 /**
  * Fetches and displays logs for a specific step.
  *
- * Gitea 1.26 exposes official step metadata but still documents only a
- * job-level log download, so we first split the official job log locally and
- * then fall back to the internal web UI endpoint.
- * 
- * @param api Official API client
- * @param internalApi Internal API client fallback
- * @param uri Virtual document URI
- * @param runRef Reference to the workflow run
- * @param jobIndex 0-based job index
- * @param stepIndex 0-based step index
- * @param totalSteps Total number of steps in the job
- * @param deps Dependencies
+ * Gitea 1.26+ exposes step metadata and job-level logs. We split the official
+ * job log locally and skip the web UI scrape. Older servers still fall back
+ * to the internal endpoint.
  */
 export async function fetchStepLogs(
   api: GiteaApi,
@@ -279,54 +319,28 @@ export async function fetchStepLogs(
   deps: StepLogStreamDependencies
 ): Promise<void> {
   logInfo(`Fetching step logs for ${runRef.repo.owner}/${runRef.repo.name} job ${job.id} step ${stepIndex}`);
-  let officialFallback: ExtractedStepLog | undefined;
-  let officialError: string | undefined;
-
-  try {
-    const official = await getOfficialStepLog(api, runRef, job, stepIndex);
-    if (official?.exact) {
-      deps.logContentProvider.update(uri, official.content);
-      return;
-    }
-    officialFallback = official;
-  } catch (error) {
-    officialError = error instanceof Error ? error.message : String(error);
-  }
-
-  const internal = await getInternalStepLog(internalApi, runRef, job, jobIndex, stepIndex, totalSteps);
-  if (internal.content) {
-    deps.logContentProvider.update(uri, internal.content);
+  const result = await resolveStepLog(
+    api,
+    internalApi,
+    runRef,
+    job,
+    jobIndex,
+    stepIndex,
+    totalSteps,
+    deps.getServerVersion?.()
+  );
+  if (result.ok) {
+    deps.logContentProvider.update(uri, result.content);
     return;
   }
-  if (internal.error && !officialFallback) {
-    logWarn(`Failed to load step logs for ${runRef.repo.owner}/${runRef.repo.name} job ${job.id} step ${stepIndex}: official API${officialError ? ` (${officialError})` : ''}; internal API (${internal.error})`);
-    deps.logContentProvider.update(
-      uri,
-      `Failed to load step logs: official API${officialError ? ` (${officialError})` : ''}; internal API (${internal.error})`
-    );
-    return;
-  }
-
-  if (officialFallback) {
-    deps.logContentProvider.update(uri, officialFallback.content);
-    return;
-  }
-
-  deps.logContentProvider.update(uri, `Failed to load step logs${officialError ? `: ${officialError}` : ''}`);
+  logWarn(`Failed to load step logs for ${runRef.repo.owner}/${runRef.repo.name} job ${job.id} step ${stepIndex}: ${result.message}`);
+  deps.logContentProvider.update(uri, result.message);
 }
 
 /**
  * Starts streaming logs for a specific step, polling until the step/job completes.
- * 
- * @param api Official API client
- * @param internalApi Internal API client fallback
- * @param uri Virtual document URI
- * @param runRef Reference to the workflow run
- * @param jobIndex 0-based job index
- * @param stepIndex 0-based step index
- * @param totalSteps Total number of steps in the job
- * @param isActive Function to check if the step is still active
- * @param deps Dependencies
+ *
+ * Step status comes from listJobs (official steps on 1.26+; otherwise the parent job).
  */
 export async function startStepLogStream(
   api: GiteaApi,
@@ -337,7 +351,6 @@ export async function startStepLogStream(
   jobIndex: number,
   stepIndex: number,
   totalSteps: number,
-  isActive: () => boolean,
   deps: StepLogStreamDependencies
 ): Promise<void> {
   logInfo(`Starting live step log stream for ${runRef.repo.owner}/${runRef.repo.name} job ${job.id} step ${stepIndex}`);
@@ -346,36 +359,47 @@ export async function startStepLogStream(
   liveLogStreams.set(uri.toString(), controller);
 
   let lastContent = '';
-  while (!controller.stopped && isActive()) {
-    let officialFallback: ExtractedStepLog | undefined;
+  while (!controller.stopped) {
+    const result = await resolveStepLog(
+      api,
+      internalApi,
+      runRef,
+      job,
+      jobIndex,
+      stepIndex,
+      totalSteps,
+      deps.getServerVersion?.()
+    );
+    const content = result.ok ? result.content : result.message;
+    if (content !== lastContent) {
+      lastContent = content;
+      deps.logContentProvider.update(uri, content);
+    }
+
+    let stillActive = true;
     try {
-      const official = await getOfficialStepLog(api, runRef, job, stepIndex);
-      if (official?.exact) {
-        if (official.content !== lastContent) {
-          lastContent = official.content;
-          deps.logContentProvider.update(uri, official.content);
-        }
+      const settings = deps.getSettings();
+      const jobs = await api.listJobs(runRef.repo, runRef.id, {
+        limit: settings.maxJobsPerRun,
+        timeoutMs: JOBS_TIMEOUT_MS
+      });
+      const current = jobs.find((item) => String(item.id) === String(job.id));
+      const liveStep = current?.steps?.[stepIndex];
+      if (liveStep) {
+        stillActive = isStepActive(liveStep);
       } else {
-        officialFallback = official;
+        stillActive = current ? isJobActive(current.status) : false;
       }
     } catch {
-      // Fall back to the internal web UI API below.
+      stillActive = true;
     }
 
-    if (!lastContent || officialFallback) {
-      const internal = await getInternalStepLog(internalApi, runRef, job, jobIndex, stepIndex, totalSteps);
-      const content = internal.content ?? officialFallback?.content ?? `Failed to load step logs: ${internal.error ?? 'unknown error'}`;
-      if (content !== lastContent) {
-        lastContent = content;
-        deps.logContentProvider.update(uri, content);
-      }
+    if (!stillActive) {
+      break;
     }
-
-    const settings = deps.getSettings();
-    await sleep(settings.logPollIntervalSeconds * 1000);
+    await sleep(deps.getSettings().logPollIntervalSeconds * 1000);
   }
 
-  // Final fetch after loop ends
   if (!controller.stopped) {
     await fetchStepLogs(api, internalApi, uri, runRef, job, jobIndex, stepIndex, totalSteps, deps);
   }

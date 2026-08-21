@@ -3,8 +3,15 @@
  * These values control timing behavior throughout the extension.
  */
 
-/** Timeout for job API requests in milliseconds */
-export const JOBS_TIMEOUT_MS = 4000;
+/**
+ * Timeout for job API requests in milliseconds.
+ *
+ * Gitea 1.27+ populates `steps` on GET .../actions/runs/{run}/jobs and
+ * batch-loads related job/task data, so this endpoint is slower than the
+ * run list. A 4s cap aborts with "This operation was aborted" before the
+ * payload arrives. Keep this aligned with the default client timeout.
+ */
+export const JOBS_TIMEOUT_MS = 15000;
 
 /** Duration for toast/notification messages (ms) */
 export const TOAST_TIMEOUT_MS = 3000;

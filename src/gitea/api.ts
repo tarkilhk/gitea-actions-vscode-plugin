@@ -25,12 +25,15 @@ export function pickArray<T = unknown>(payload: unknown, fallback: T[] = []): T[
     return payload as T[];
   }
   // eslint-disable-next-line @typescript-eslint/naming-convention
-  const obj = payload as { data?: unknown[]; workflow_runs?: unknown[] };
+  const obj = payload as { data?: unknown[]; workflow_runs?: unknown[]; jobs?: unknown[] };
   if (Array.isArray(obj?.data)) {
     return obj.data as T[];
   }
   if (Array.isArray(obj?.workflow_runs)) {
     return obj.workflow_runs as T[];
+  }
+  if (Array.isArray(obj?.jobs)) {
+    return obj.jobs as T[];
   }
   return fallback;
 }
@@ -108,6 +111,7 @@ export function mapJob(raw: unknown): Job {
     startedAt: pickTimestamp(r.started_at, r.start_time, r.startedAt),
     completedAt: pickTimestamp(r.completed_at, r.completed, r.completedAt),
     htmlUrl: (r.html_url ?? r.url ?? r.web_url) as string | undefined,
+    // undefined = Gitea omitted/null steps (pre-1.26). [] = official API said none yet.
     steps: Array.isArray(r.steps) ? (r.steps as unknown[]).map((step) => mapStep(step)) : undefined
   };
 }

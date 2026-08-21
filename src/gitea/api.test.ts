@@ -26,6 +26,11 @@ describe('pickArray', () => {
     expect(pickArray(input)).toEqual([{ id: 1 }, { id: 2 }]);
   });
 
+  it('extracts jobs array from Gitea WorkflowJobsList payload', () => {
+    const input = { jobs: [{ id: 1 }, { id: 2 }], total_count: 2 };
+    expect(pickArray(input)).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+
   it('prefers data over workflow_runs', () => {
     const input: Record<string, unknown> = { data: [1] };
     input['workflow_runs'] = [2];
@@ -238,6 +243,16 @@ describe('mapJob', () => {
     const raw = { id: 1, name: 'job' };
     const result = mapJob(raw);
     expect(result.steps).toBeUndefined();
+  });
+
+  it('treats a null steps field as omitted', () => {
+    const result = mapJob({ id: 1, name: 'job', steps: null });
+    expect(result.steps).toBeUndefined();
+  });
+
+  it('keeps an empty official steps array', () => {
+    const result = mapJob({ id: 1, name: 'job', steps: [] });
+    expect(result.steps).toEqual([]);
   });
 
   it('provides fallback name when missing', () => {

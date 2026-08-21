@@ -1,18 +1,9 @@
 /**
  * Internal (undocumented) Gitea API for legacy step details and logs.
  *
- * BACKGROUND:
- * Older Gitea versions exposed a `steps` field on jobs but often returned null.
- * This module provides a workaround by calling the same internal endpoints the
- * Gitea web UI uses.
- *
- * CURRENT STATUS (as of Gitea ≈1.24+):
- * The internal run page can be inaccessible with PAT auth for private repos,
- * even when official API calls work. Prefer official API data first.
- *
- * We still call this for public repos and older Gitea instances. When steps
- * fail to load, refreshService.ts sets job.stepsError for the UI.
- *
+ * Gitea 1.26+ populates `steps` on the official jobs list endpoint, so this
+ * module is only used as a fallback for older servers. The web UI routes are
+ * often 404 for private repos when the request uses a PAT.
  */
 
 import { GiteaClient } from './client';
@@ -222,42 +213,6 @@ export class GiteaInternalApi {
   }
 
   /**
-   * Fetches logs for all steps at once.
-   * Useful for getting complete job logs with step boundaries.
-   */
-  async getAllStepLogs(
-    repo: RepoRef,
-    runId: number | string,
-    jobIndex: number,
-    totalSteps: number
-  ): Promise<StepLog[]> {
-    const path = `/${repo.owner}/${repo.name}/actions/runs/${runId}/jobs/${jobIndex}`;
-    
-    // Build log cursors array - all steps expanded
-    const logCursors: LogCursor[] = [];
-    for (let i = 0; i < totalSteps; i++) {
-      logCursors.push({
-        step: i,
-        cursor: null,
-        expanded: true
-      });
-    }
-
-    const response = await this.postJson<InternalJobResponse>(path, { logCursors }, repo, runId);
-    
-    return (response.logs?.stepsLog ?? []).map(sl => ({
-      step: sl.step,
-      cursor: sl.cursor,
-      lines: sl.lines.map(line => ({
-        index: line.index,
-        message: line.message,
-        timestamp: line.timestamp
-      })),
-      started: sl.started
-    }));
-  }
-
-  /**
    * Formats step log lines into a readable string.
    */
   static formatStepLogs(stepLog: StepLog): string {
@@ -272,23 +227,6 @@ export class GiteaInternalApi {
         return `${timestamp} | ${line.message}`;
       })
       .join('\n');
-  }
-
-  /**
-   * Formats all step logs with step headers.
-   */
-  static formatAllStepLogs(stepLogs: StepLog[], steps: Step[]): string {
-    const parts: string[] = [];
-
-    for (const stepLog of stepLogs) {
-      const stepInfo = steps[stepLog.step];
-      const stepName = stepInfo?.name ?? `Step ${stepLog.step}`;
-      const header = `\n${'='.repeat(60)}\n[Step ${stepLog.step}] ${stepName}\n${'='.repeat(60)}\n`;
-      parts.push(header);
-      parts.push(this.formatStepLogs(stepLog));
-    }
-
-    return parts.join('\n');
   }
 
   /**

@@ -96,10 +96,10 @@ src/
 
 ## Testing
 
-The project uses [Vitest](https://vitest.dev/) for testing.
+The project uses [Vitest](https://vitest.dev/) for unit tests and `@vscode/test-electron` for Extension Host integration tests.
 
 ```bash
-# Run all tests
+# Unit tests
 npm test
 
 # Watch mode
@@ -107,7 +107,12 @@ npm run test:watch
 
 # With coverage
 npm run test:coverage
+
+# Real VS Code Extension Host (downloads a portable VS Code)
+npm run test:integration
 ```
+
+Optional live checks (never commit these values) use `GITEA_URL`, `GITEA_TOKEN`, and `GITEA_REPO` in the environment, or `node scripts/live-smoke.mjs` with the same variables.
 
 ### Test Files
 
@@ -120,6 +125,7 @@ Tests are co-located with source files using the `.test.ts` suffix:
 - `src/gitea/internalApi.test.ts` — Internal API for job steps
 - `src/views/actionsTreeProvider.test.ts` — Tree provider expansion state and targeted refresh
 - `src/services/refreshService.test.ts` — Repo list diffing logic
+- `src/test/integration/` — Extension Host smoke tests against a local mock Gitea
 
 ### Writing Tests
 

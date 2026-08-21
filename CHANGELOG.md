@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] - 2026-08-21
+
+### ✨ Added
+
+- Extension Host integration tests (`npm run test:integration`) launch a real VS Code, load this extension, and exercise refresh / expand-run / job logs.
+- Optional live run of those same tests, plus `node scripts/live-smoke.mjs`, against a real Gitea. Set `GITEA_URL`, `GITEA_TOKEN`, and `GITEA_REPO` in the environment.
+
+### 🐛 Fixed
+
+- Expanding a run no longer fails with "This operation was aborted". Gitea 1.26+ fills in `steps` on `GET .../actions/runs/{run}/jobs`, and on 1.27 that call is often slower than the old 4s cap. The jobs timeout is now 15s. If a request still times out, the tree shows "The request timed out waiting for Gitea." instead of the abort wording.
+
+### 📝 Changed
+
+- On Gitea 1.26+, job steps come from that official `listJobs` payload. The extra `GET .../actions/jobs/{id}` call and the undocumented web UI scrape run only when the server is older than 1.26, or when the version cannot be parsed (treated as old).
+- On Gitea 1.26+, step logs are sliced from the official job log (`GET .../actions/jobs/{id}/logs`). Gitea still has no per-step log API. Live job and step streams poll that job log and `listJobs` status. They no longer scrape the web UI or keep a stale "still running" callback from the first fetch.
+- Older Gitea is unchanged: missing `steps` still go through `getJob`, then the web UI. Private repos on those versions can still 404 on the UI route when using a PAT.
+- **Gitea Actions: Diagnose Steps** now prints whether `listJobs` already included official steps, then still probes the older endpoints.
+
 ## [2.7.0] - 2026-07-17
 
 ### ✨ Added
