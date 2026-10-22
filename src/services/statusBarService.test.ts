@@ -39,7 +39,7 @@ vi.mock('vscode', () => ({
   }
 }));
 
-import { initStatusBar, updateStatusBar, clearAllPinnedWorkflows } from './statusBarService';
+import { initStatusBar, updateStatusBar, clearAllPinnedWorkflows, setActivityBadgeHandler, ActivityBadge } from './statusBarService';
 import { WorkflowRun } from '../gitea/models';
 
 describe('statusBarService', () => {
@@ -174,6 +174,61 @@ describe('statusBarService', () => {
       updateStatusBar('Gitea: loading...');
 
       expect(mainItem.text).toBe('Gitea: loading...');
+    });
+  });
+
+  describe('activity bar badge', () => {
+    const badges: Array<ActivityBadge | undefined> = [];
+
+    beforeEach(() => {
+      badges.length = 0;
+      setActivityBadgeHandler((badge) => {
+        badges.push(badge);
+      });
+    });
+
+    afterEach(() => {
+      setActivityBadgeHandler(undefined);
+    });
+
+    it('counts queued and running runs and hides the badge when none are in progress', () => {
+      const runs: WorkflowRun[] = [
+        { id: 1, name: 'CI', status: 'running' },
+        { id: 2, name: 'Lint', status: 'queued' },
+        { id: 3, name: 'Release', status: 'completed', conclusion: 'success' }
+      ];
+
+      updateStatusBar(undefined, new Map([['owner/repo', runs]]));
+
+      expect(badges.at(-1)).toEqual({ value: 2, tooltip: '2 runs in progress' });
+
+      updateStatusBar(undefined, new Map([['owner/repo', [runs[2]]]]));
+
+      expect(badges.at(-1)).toBeUndefined();
+    });
+
+    it('uses a singular tooltip for one run and sums across repositories', () => {
+      updateStatusBar(undefined, new Map([
+        ['owner/repo-a', [{ id: 1, name: 'CI', status: 'running' }]],
+        ['owner/repo-b', [{ id: 2, name: 'CI', status: 'queued' }]]
+      ]));
+
+      expect(badges.at(-1)).toEqual({ value: 2, tooltip: '2 runs in progress' });
+
+      updateStatusBar(undefined, new Map([
+        ['owner/repo-a', [{ id: 1, name: 'CI', status: 'running' }]]
+      ]));
+
+      expect(badges.at(-1)).toEqual({ value: 1, tooltip: '1 run in progress' });
+    });
+
+    it('clears the badge when the status bar is given a direct message', () => {
+      updateStatusBar(undefined, new Map([
+        ['owner/repo', [{ id: 1, name: 'CI', status: 'running' }]]
+      ]));
+      updateStatusBar('Gitea: not configured');
+
+      expect(badges.at(-1)).toBeUndefined();
     });
   });
 });

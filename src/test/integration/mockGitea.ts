@@ -1,17 +1,31 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-const RUN = {
-  id: 964,
-  name: 'CI',
-  path: '.gitea/workflows/ci.yml',
-  display_title: 'CI',
-  status: 'completed',
-  conclusion: 'success',
-  event: 'push',
-  head_branch: 'main',
-  html_url: 'http://127.0.0.1/acme/demo/actions/runs/964'
+export type MockWorkflowRun = {
+  id: number;
+  status: string;
+  conclusion?: string;
 };
+
+const DEFAULT_RUN: MockWorkflowRun = {
+  id: 964,
+  status: 'completed',
+  conclusion: 'success'
+};
+
+function toApiRun(run: MockWorkflowRun) {
+  return {
+    id: run.id,
+    name: 'CI',
+    path: '.gitea/workflows/ci.yml',
+    display_title: 'CI',
+    status: run.status,
+    conclusion: run.conclusion,
+    event: 'push',
+    head_branch: 'main',
+    html_url: `http://127.0.0.1/acme/demo/actions/runs/${run.id}`
+  };
+}
 
 const JOBS = {
   total_count: 1,
@@ -35,12 +49,14 @@ const JOB_LOG = [
 export type MockGitea = {
   url: string;
   close: () => Promise<void>;
+  setRuns: (runs: MockWorkflowRun[]) => void;
 };
 
-export function startMockGitea(options: { jobsDelayMs: number }): Promise<MockGitea> {
+export function startMockGitea(options: { jobsDelayMs: number; runs?: MockWorkflowRun[] }): Promise<MockGitea> {
+  let runs = options.runs ?? [DEFAULT_RUN];
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const pathname = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
-    route(pathname, options.jobsDelayMs, res);
+    route(pathname, options.jobsDelayMs, res, () => runs);
   });
 
   return new Promise((resolve, reject) => {
@@ -49,13 +65,21 @@ export function startMockGitea(options: { jobsDelayMs: number }): Promise<MockGi
       const { port } = server.address() as AddressInfo;
       resolve({
         url: `http://127.0.0.1:${port}`,
-        close: () => closeServer(server)
+        close: () => closeServer(server),
+        setRuns: (next) => {
+          runs = next;
+        }
       });
     });
   });
 }
 
-function route(pathname: string, jobsDelayMs: number, res: ServerResponse): void {
+function route(
+  pathname: string,
+  jobsDelayMs: number,
+  res: ServerResponse,
+  getRuns: () => MockWorkflowRun[]
+): void {
   if (pathname === '/api/v1/version') {
     sendJson(res, { version: '1.27.2' });
     return;
@@ -78,7 +102,7 @@ function route(pathname: string, jobsDelayMs: number, res: ServerResponse): void
     return;
   }
   if (pathname.endsWith('/actions/runs') || /\/actions\/workflows\/[^/]+\/runs$/.test(pathname)) {
-    sendJson(res, { workflow_runs: [RUN] });
+    sendJson(res, { workflow_runs: getRuns().map(toApiRun) });
     return;
   }
   if (pathname.endsWith('/logs')) {

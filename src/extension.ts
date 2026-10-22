@@ -52,6 +52,7 @@ import {
   initStatusBar,
   initPinnedWorkflows,
   pinWorkflow,
+  setActivityBadgeHandler,
   showToast,
   unpinWorkflow,
   updateStatusBar
@@ -102,6 +103,8 @@ export type GiteaActionsExtensionApi = {
   setToken(token: string): Promise<void>;
   getRunsProvider(): ActionsTreeProvider;
   expandNode(node: ActionsNode): Promise<void>;
+  /** Badge VS Code draws on the activity bar icon. Absent when nothing is in progress. */
+  getActivityBadge(): { value: number; tooltip: string } | undefined;
 };
 
 /**
@@ -146,6 +149,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<GiteaA
     showCollapseAll: true
   });
   context.subscriptions.push(workspaceTree, workflowsTree, settingsTree);
+  // One view only: the activity bar adds up badges from every view in the container.
+  setActivityBadgeHandler((badge) => {
+    workspaceTree.badge = badge;
+  });
   windowFocused = vscode.window.state.focused;
   workspaceVisible = workspaceTree.visible;
   workflowsVisible = workflowsTree.visible;
@@ -302,11 +309,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<GiteaA
       settingsProvider.setTokenStatus(true);
     },
     getRunsProvider: () => workspaceProvider,
-    expandNode: (node: ActionsNode) => handleExpand(node)
+    expandNode: (node: ActionsNode) => handleExpand(node),
+    getActivityBadge: () => workspaceTree.badge
   };
 }
 
 export function deactivate(): void {
+  setActivityBadgeHandler(undefined);
   refreshController?.dispose();
 }
 

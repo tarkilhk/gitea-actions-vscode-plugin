@@ -16,6 +16,58 @@ let pinnedStorage: vscode.Memento | undefined;
 let pinnedWorkflows: PinnedWorkflow[] = [];
 const pinnedStatusItems = new Map<string, vscode.StatusBarItem>();
 
+/** Number shown on the activity bar icon. `undefined` removes the badge. */
+export type ActivityBadge = {
+  value: number;
+  tooltip: string;
+};
+
+let onActivityBadge: ((badge: ActivityBadge | undefined) => void) | undefined;
+
+/**
+ * Receives badge updates whenever run data refreshes.
+ * The activity bar sums badges across every view in the container, so the
+ * extension applies this to a single tree view.
+ */
+export function setActivityBadgeHandler(
+  handler: ((badge: ActivityBadge | undefined) => void) | undefined
+): void {
+  onActivityBadge = handler;
+}
+
+/** Queued and running runs across every tracked repository. */
+export function countInProgressRuns(lastRunsByRepo: Map<string, WorkflowRun[]>): number {
+  let count = 0;
+  for (const runs of lastRunsByRepo.values()) {
+    for (const run of runs) {
+      if (isRunning(run.status)) {
+        count += 1;
+      }
+    }
+  }
+  return count;
+}
+
+function publishActivityBadge(lastRunsByRepo: Map<string, WorkflowRun[]> | undefined): void {
+  if (!onActivityBadge) {
+    return;
+  }
+  if (!lastRunsByRepo) {
+    onActivityBadge(undefined);
+    return;
+  }
+  const value = countInProgressRuns(lastRunsByRepo);
+  if (value === 0) {
+    onActivityBadge(undefined);
+    return;
+  }
+  const noun = value === 1 ? 'run' : 'runs';
+  onActivityBadge({
+    value,
+    tooltip: `${value} ${noun} in progress`
+  });
+}
+
 function pinnedKey(workflow: PinnedWorkflow): string {
   return `${workflow.repo.owner}/${workflow.repo.name}::${workflow.workflowId}`;
 }
@@ -96,6 +148,8 @@ export function getStatusBarItem(): vscode.StatusBarItem | undefined {
 }
 
 export function updateStatusBar(text?: string, lastRunsByRepo?: Map<string, WorkflowRun[]>): void {
+  // A direct status string means runs are unavailable (not configured). Hide the count.
+  publishActivityBadge(text ? undefined : lastRunsByRepo);
   if (!statusBarItem) {
     return;
   }

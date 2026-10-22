@@ -9,9 +9,11 @@ type TreeNode = {
   type: string;
   message?: string;
   repo?: unknown;
-  run?: { id: number | string; name?: string };
+  run?: { id: number | string; name?: string; status?: string };
   job?: { name?: string; steps?: Array<{ name: string }> };
 };
+
+type ActivityBadge = { value: number; tooltip: string };
 
 type ExtensionApi = {
   setToken(token: string): Promise<void>;
@@ -19,6 +21,7 @@ type ExtensionApi = {
     getChildren(element?: TreeNode): vscode.ProviderResult<TreeNode[]>;
   };
   expandNode(node: TreeNode): Promise<void>;
+  getActivityBadge(): ActivityBadge | undefined;
 };
 
 describe('Gitea Actions Extension Host', () => {
@@ -71,6 +74,47 @@ describe('Gitea Actions Extension Host', () => {
     );
     assert.match(logText, /checked out main/);
     assert.doesNotMatch(logText, /This operation was aborted/i);
+  });
+
+  it('shows an activity bar count for in-progress runs and clears it when they finish', async () => {
+    mock = await startMockGitea({
+      jobsDelayMs: 0,
+      runs: [
+        { id: 1, status: 'in_progress' },
+        { id: 2, status: 'queued' },
+        { id: 3, status: 'completed', conclusion: 'success' }
+      ]
+    });
+    const api = await activateConfigured(mock.url);
+    await vscode.commands.executeCommand('giteaActions.refresh');
+
+    const repo = await waitForNode(api, undefined, (node) => node.type === 'repo');
+    await waitForNode(
+      api,
+      repo,
+      (node) => node.type === 'run' && (node.run?.status === 'running' || node.run?.status === 'queued')
+    );
+
+    const badge = await waitFor(
+      () => api.getActivityBadge(),
+      (value) => value?.value === 2 && value.tooltip === '2 runs in progress',
+      20000
+    );
+    assert.deepEqual(badge, { value: 2, tooltip: '2 runs in progress' });
+
+    mock.setRuns([
+      { id: 1, status: 'completed', conclusion: 'success' },
+      { id: 2, status: 'completed', conclusion: 'success' },
+      { id: 3, status: 'completed', conclusion: 'success' }
+    ]);
+    await vscode.commands.executeCommand('giteaActions.refresh');
+
+    await waitFor(
+      () => api.getActivityBadge(),
+      (value) => value === undefined,
+      20000
+    );
+    assert.equal(api.getActivityBadge(), undefined);
   });
 
   it('loads jobs and logs from the live Gitea instance', async function () {
